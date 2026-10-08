@@ -271,3 +271,11 @@ This section supersedes earlier descriptions of automatic limits reauthenticatio
 ## 15. Responsive browser QA
 
 `tests/ui_qa.cjs` uses synthetic data and intercepts every API call (including writes); it never connects to the router. It sweeps widths from 320 to 2560px in 32px steps plus exact breakpoints, exercises long names/dialogs, checks text contrast, and verifies delayed loads, failed reloads/saves, keyboard focus, range/unit persistence, and Device-MAC validation. Playwright/Chromium are optional external test tools, not app dependencies. Run from the project directory with `PLAYWRIGHT_MODULE=/tmp/node_modules/playwright CHROMIUM_PATH=/usr/bin/chromium node tests/ui_qa.cjs`; use `--layout-only` or `--behavior-only` for targeted checks. Use `UI_THEME=classic` (default) or `UI_THEME=hacker` to check a skin. Results/screenshots go to `/tmp/opennds-ui-qa` (override with `UI_QA_OUTPUT`).
+
+## 16. Current working workflow
+
+- Use only `main` in `/home/justine/Data/Open NDS`. The user cancelled the separate development branch/worktree and its synthetic preview.
+- The active manager/final preview remains `http://localhost:8080`, Docker Compose project `opennds`.
+- Develop and run the relevant mocked/offline checks in this main workspace. Rebuild and verify read-only APIs/UI after application changes, as described above.
+- Do not create another branch/worktree or a second router controller unless the user explicitly requests it. Do not change live router state solely to test.
+- Keep AGENTS.md updated with architecture, UI behavior, testing, and deployment changes. Local credentials, SSH keys, and runtime data remain excluded from Git.
