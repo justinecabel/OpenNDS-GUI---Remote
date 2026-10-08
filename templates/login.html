@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="hacker">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · openNDS Manager</title>
+<script src="{{ url_for('static', filename='themes.js') }}"></script>
+<style>
+*{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;background:#f4f4f4;font-family:system-ui,sans-serif;color:#234}.card{width:min(360px,calc(100% - 32px));padding:28px;background:#fff;border:1px solid #d6dee5;border-radius:10px;box-shadow:0 8px 30px #1232}h1{margin:0 0 5px;font-size:24px}.sub{margin:0 0 22px;color:#567;font-size:14px}label{display:block;margin:14px 0 6px;font-size:14px;font-weight:600}input{width:100%;padding:10px;border:1px solid #aab8c4;border-radius:5px;font:inherit}.sign-in-button{width:100%;margin-top:20px}.error{min-height:20px;margin:14px 0 0;color:#a22;font-size:14px}
+</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='buttons.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='themes.css') }}">
+</head>
+<body>
+<main class="card">
+<h1>openNDS Manager</h1>
+
+<form method="post" action="/login">
+<input type="hidden" name="next" value="{{ next_url }}">
+<label for="username">Username</label>
+<input id="username" name="username" autocomplete="username" required autofocus>
+<label for="password">Password</label>
+<input id="password" name="password" type="password" autocomplete="current-password" required>
+<button type="submit" class="btn btn-primary sign-in-button">Sign in</button>
+<p class="error" role="alert">{{ error }}</p>
+</form>
+<div class="theme-control theme-login"><label for="theme_login">Theme</label><select id="theme_login" data-theme-select aria-label="Theme"><option value="classic">Classic</option><option value="hacker" selected>Hacker</option></select></div>
+</main>
+</body>
+</html>

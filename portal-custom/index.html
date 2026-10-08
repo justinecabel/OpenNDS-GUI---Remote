@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-store">
+<title></title>
+<style>
+@property --spin { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@property --push-x { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --push-y { syntax: "<length>"; inherits: false; initial-value: 0px; }
+* { box-sizing: border-box; }
+html, body { width: 100%; min-height: 100%; margin: 0; overflow: hidden; }
+body {
+  min-height: 100vh; display: grid; place-items: center; background: #020202;
+  color: #fff; font-family: system-ui, sans-serif;
+  background-image: radial-gradient(ellipse at 50% 45%, #242424 0%, #0c0c0c 48%, #020202 100%);
+}
+body::before, body::after {
+  content: ""; position: fixed; inset: -35vmax; pointer-events: none;
+  background: conic-gradient(from var(--spin), transparent 0 12%, #ffffff12 18%, transparent 28% 49%, #ffffff0b 57%, transparent 66% 100%);
+  animation: orbit 18s linear infinite;
+}
+body::after { animation-duration: 29s; animation-direction: reverse; transform: scale(.72); opacity: .8; }
+.starfield {
+  position: fixed; inset: 0; pointer-events: none; opacity: .72;
+  background-image: radial-gradient(1px 1px at 12% 18%, #fff 99%, transparent), radial-gradient(2px 2px at 76% 12%, #aaa 99%, transparent), radial-gradient(1px 1px at 89% 62%, #fff 99%, transparent), radial-gradient(1px 1px at 22% 81%, #bbb 99%, transparent), radial-gradient(2px 2px at 58% 91%, #fff 99%, transparent), radial-gradient(1px 1px at 43% 28%, #eee 99%, transparent);
+  background-size: 310px 270px; animation: twinkle 5s ease-in-out infinite alternate;
+}
+.ambient, .ambient::before, .ambient::after {
+  position: fixed; width: 35vmax; aspect-ratio: 1; border-radius: 50%; filter: blur(55px); pointer-events: none;
+}
+.ambient { background: #ffffff18; left: -12vmax; top: -10vmax; animation: float-a 13s ease-in-out infinite alternate; }
+.ambient::before, .ambient::after { content: ""; }
+.ambient::before { background: #ffffff12; left: 105%; top: 90%; animation: float-b 16s ease-in-out infinite alternate; }
+.ambient::after { background: #ffffff0c; left: 60%; top: 155%; animation: float-a 11s ease-in-out infinite alternate-reverse; }
+.floaties, .bursts { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
+.floaties { z-index: 0; }
+.floaty {
+  position: absolute; left: var(--x); top: var(--y); width: var(--size); height: var(--size);
+  object-fit: contain; opacity: var(--opacity, .8); filter: drop-shadow(0 5px 13px #000);
+  animation: jelly-float var(--duration) ease-in-out var(--delay) infinite alternate;
+  transition: transform .48s cubic-bezier(.16,1,.3,1), opacity .42s ease, filter .3s ease;
+  user-select: none; -webkit-user-select: none; will-change: transform, opacity;
+}
+.floaty.gone { opacity: 0; filter: blur(5px); }
+.particle {
+  position: fixed; width: var(--size); height: var(--size); left: var(--x); top: var(--y);
+  border-radius: 50%; background: var(--color); box-shadow: 0 0 12px var(--color);
+  animation: puff .7s ease-out forwards;
+}
+.portal { position: relative; z-index: 1; display: grid; place-items: center; isolation: isolate; }
+.portal::before, .portal::after {
+  content: ""; position: absolute; border-radius: 50%; pointer-events: none;
+  border: 1px solid #ffffff55; box-shadow: 0 0 28px #ffffff21, inset 0 0 24px #ffffff12;
+}
+.portal::before { width: min(76vw, 430px); aspect-ratio: 1; border-style: dashed; animation: spin 20s linear infinite; }
+.portal::after { width: min(55vw, 310px); aspect-ratio: 1; border-color: #ffffff45; animation: spin 12s linear infinite reverse; }
+form {
+  position: relative; display: grid; place-items: center; width: 176px; height: 176px; margin: 0;
+  border-radius: 50%; background: radial-gradient(circle at 30% 22%, #fff3, transparent 40%), linear-gradient(145deg, #ffffff24, #ffffff08 52%, #00000012);
+  border: 1px solid #ffffff88; box-shadow: 0 0 0 8px #ffffff0c, 0 22px 70px #000a, inset 0 1px #fff8, inset 0 0 45px #ffffff1c;
+  backdrop-filter: blur(18px); animation: breathe 3.6s ease-in-out infinite;
+}
+form::before, form::after { content: ""; position: absolute; border-radius: inherit; pointer-events: none; }
+form::before { inset: 12px; border: 1px solid #ffffff5c; }
+form::after { inset: -1px; background: linear-gradient(135deg, #fff8, transparent 22%, transparent 78%, #ffffff5a); mix-blend-mode: screen; }
+.activate {
+  appearance: none; position: relative; z-index: 2; display: grid; place-items: center; width: 108px; height: 108px;
+  padding: 0; border: 0; background: transparent; cursor: pointer;
+  transition: transform .22s cubic-bezier(.2,.9,.25,1.4), filter .22s ease;
+}
+.activate::before {
+  content: "Tap to\A continue"; white-space: pre; position: absolute; z-index: 2; top: -7px; left: 61px; width: 104px; padding: 9px 8px;
+  border: 1px solid #ffffffdd; border-radius: 16px 16px 16px 4px; color: #171717; background: #fff;
+  box-shadow: 0 8px 20px #0008, inset 0 1px #fff; font: 800 11px/1.18 system-ui, sans-serif; letter-spacing: .06em; text-align: center; text-transform: uppercase;
+  transform: rotate(4deg); pointer-events: none; transition: transform .22s ease, box-shadow .22s ease;
+}
+.activate img { position: relative; z-index: 3; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 10px 11px #000c); transition: transform .22s ease, filter .22s ease; }
+.activate:hover { transform: translateY(-4px) scale(1.05); }
+.portal[data-connected="1"] .activate::before { content: "Connected"; }
+.activate:hover::before { transform: translate(3px, -3px) rotate(6deg); box-shadow: 0 12px 25px #000a, 0 0 20px #ffffff55; }
+.activate:hover img { transform: rotate(-5deg) scale(1.06); filter: drop-shadow(0 14px 13px #000d) brightness(1.08); }
+.activate:active { transform: translateY(1px) scale(.96); }
+.activate:focus-visible { outline: 3px solid white; outline-offset: 7px; border-radius: 50%; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes orbit { to { --spin: 360deg; } }
+@keyframes twinkle { to { opacity: .42; transform: scale(1.025); } }
+@keyframes jelly-float { 0% { transform: translate3d(var(--push-x),var(--push-y),0) translate3d(0,0,0) rotate(-9deg) scale(.94); } 45% { transform: translate3d(var(--push-x),var(--push-y),0) translate3d(12px,-17px,0) rotate(7deg) scale(1.08); } 72% { transform: translate3d(var(--push-x),var(--push-y),0) translate3d(-8px,-7px,0) rotate(2deg) scale(.98); } 100% { transform: translate3d(var(--push-x),var(--push-y),0) translate3d(4px,11px,0) rotate(11deg) scale(1.04); } }
+@keyframes puff { to { transform: translate3d(var(--dx),var(--dy),0) scale(0); opacity: 0; } }
+@keyframes breathe { 50% { transform: scale(1.045); box-shadow: 0 0 0 12px #ffffff11, 0 28px 86px #000b, inset 0 1px #fff8, inset 0 0 54px #ffffff30; } }
+@keyframes float-a { to { transform: translate(21vw, 17vh) scale(1.15); } }
+@keyframes float-b { to { transform: translate(-17vw, -12vh) scale(.8); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
+</style>
+</head>
+<body>
+<div class="starfield" aria-hidden="true"></div><div class="ambient"></div><div class="floaties" aria-hidden="true"></div><div class="bursts" aria-hidden="true"></div><main class="portal" data-connected="{{CONNECTED}}">
+<form action="{{AUTH_ACTION}}" method="get">
+<input type="hidden" name="tok" value="{{TOKEN}}">
+<input type="hidden" name="redir" value="{{REDIR}}">
+<button class="activate" type="submit" aria-label="Continue"><img src="/portal-content/cats/cat.gif" alt=""></button>
+</form>
+</main>
+<script>
+(() => {
+  const field = document.querySelector('.floaties');
+  const bursts = document.querySelector('.bursts');
+  const catAssets = [
+    '/portal-content/cats/besos-gif.gif',
+    '/portal-content/cats/cat-dance-c.gif',
+    '/portal-content/cats/cat-meme.gif',
+    '/portal-content/cats/cat.gif',
+    '/portal-content/cats/crunchy-cat.gif',
+    '/portal-content/cats/kitty-dancing.gif',
+    '/portal-content/cats/meme-cat.gif',
+    '/portal-content/cats/meme.gif',
+    '/portal-content/cats/meow-awesome.gif',
+    '/portal-content/cats/meow-zhe.gif',
+    '/portal-content/cats/party-cat.gif',
+    '/portal-content/cats/scuba-scuba-dance.gif',
+    '/portal-content/cats/toothless-cat-cat.gif',
+    '/portal-content/cats/yourmo-frosc-is-cute.gif',
+  ];
+  const colors = ['#fff', '#dedede', '#aaa', '#f4f4f4'];
+  const pickCat = () => catAssets[Math.floor(Math.random() * catAssets.length)];
+  const portal = document.querySelector('.portal');
+  const form = document.querySelector('form');
+  const login = () => {
+    const action = form.getAttribute('action');
+    if (!action) return;
+    const q = new URLSearchParams(new FormData(form)).toString();
+    new Image().src = action + '?' + q;
+  };
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    portal.dataset.connected = '1';
+    login();
+    setTimeout(() => location.replace('/fas?landing=1'), 1000);
+  });
+  const continueButton = document.querySelector('.activate');
+  const continueCat = continueButton.querySelector('img');
+  if (catAssets.length) continueCat.src = pickCat();
+  const floatingCount = window.matchMedia('(max-width: 600px)').matches ? 26 : 42;
+  const items = Array.from({ length: floatingCount }, () => {
+    const el = document.createElement('img');
+    el.className = 'floaty'; el.src = pickCat();
+    el.alt = ''; el.setAttribute('aria-hidden', 'true'); el.draggable = false;
+    el.style.setProperty('--x', (3 + Math.random() * 91) + 'vw');
+    el.style.setProperty('--y', (4 + Math.random() * 88) + 'vh');
+    el.style.setProperty('--size', '64px');
+    el.style.setProperty('--duration', (4.5 + Math.random() * 5) + 's');
+    el.style.setProperty('--delay', (-Math.random() * 8) + 's');
+    el.style.setProperty('--opacity', (.48 + Math.random() * .48).toFixed(2));
+    field.appendChild(el);
+    return { el, x: 0, y: 0, until: 0, cooldown: 0 };
+  });
+  const puff = (x, y, count = 10) => {
+    for (let i = 0; i < count; i++) {
+      const p = document.createElement('i');
+      const a = Math.random() * Math.PI * 2, d = 24 + Math.random() * 68;
+      p.className = 'particle';
+      p.style.setProperty('--x', x + 'px'); p.style.setProperty('--y', y + 'px');
+      p.style.setProperty('--dx', Math.cos(a) * d + 'px'); p.style.setProperty('--dy', Math.sin(a) * d + 'px');
+      p.style.setProperty('--size', (2 + Math.random() * 4) + 'px');
+      p.style.setProperty('--color', colors[Math.floor(Math.random() * colors.length)]);
+      bursts.appendChild(p); p.addEventListener('animationend', () => p.remove(), { once: true });
+    }
+  };
+  let px = -1000, py = -1000;
+  const move = (x, y) => { px = x; py = y; };
+  window.addEventListener('pointermove', e => move(e.clientX, e.clientY), { passive: true });
+  window.addEventListener('pointerdown', e => { move(e.clientX, e.clientY); puff(px, py, 14); }, { passive: true });
+  const tick = () => {
+    const now = performance.now();
+    for (const item of items) {
+      const r = item.el.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const dx = cx - px, dy = cy - py, dist = Math.hypot(dx, dy);
+      if (dist < 112 && now > item.cooldown) {
+        const force = (112 - dist) / 112;
+        item.x = dx / Math.max(dist, 1) * (34 + force * 52);
+        item.y = dy / Math.max(dist, 1) * (34 + force * 52);
+        item.until = now + 520; item.cooldown = now + 260;
+        item.el.style.setProperty('--push-x', item.x + 'px');
+        item.el.style.setProperty('--push-y', item.y + 'px');
+        if (Math.random() > .55) puff(cx, cy, 4);
+      }
+      if (now > item.until && item.x) {
+        item.x = 0; item.y = 0;
+        item.el.style.setProperty('--push-x', '0px'); item.el.style.setProperty('--push-y', '0px');
+      }
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+})();
+</script>
+</body></html>

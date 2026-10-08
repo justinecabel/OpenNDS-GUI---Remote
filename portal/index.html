@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Connect to Wi-Fi</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: #15243b;
+      background: radial-gradient(ellipse at top, #eaf4ff 0, #f5f8fc 56%, #edf2f8 100%);
+    }
+    main {
+      width: min(100%, 420px);
+      padding: 38px 30px 32px;
+      text-align: center;
+      background: #fff;
+      border: 1px solid #e0e8f1;
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(31, 62, 99, .12);
+    }
+    .mark {
+      width: 62px;
+      height: 62px;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 24px;
+      color: #fff;
+      background: linear-gradient(145deg, #2878e8, #1358c8);
+      border-radius: 19px;
+      font-size: 28px;
+      font-weight: 700;
+      box-shadow: 0 8px 20px rgba(36, 105, 213, .25);
+    }
+    .eyebrow { margin: 0 0 8px; color: #3973bd; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(27px, 7vw, 34px); letter-spacing: -.04em; line-height: 1.15; }
+    .intro { margin: 13px 0 27px; color: #5d6c81; font-size: 15px; line-height: 1.55; }
+    form { margin: 0; }
+    button {
+      width: 100%;
+      min-height: 54px;
+      padding: 14px 20px;
+      color: #fff;
+      background: #1767d5;
+      border: 0;
+      border-radius: 12px;
+      font: inherit;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(23, 103, 213, .2);
+    }
+    button:active { transform: translateY(1px); }
+    .footnote { margin: 20px 0 0; color: #718096; font-size: 12px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark" aria-hidden="true">W</div>
+    <p class="eyebrow">Wi-Fi access</p>
+    <h1>Welcome</h1>
+    <p class="intro">You’re almost connected. Continue to start using the internet.</p>
+    {{CONTINUE_FORM}}
+    <p class="footnote">By continuing, you agree to use this network responsibly.</p>
+  </main>
+</body>
+</html>

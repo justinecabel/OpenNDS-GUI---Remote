@@ -1,0 +1,32 @@
+# Copy to docker-compose.yml and configure .env before starting.
+services:
+  opennds-manager:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:8080:8080"
+    environment:
+      ADMIN_USER: "${ADMIN_USER:-admin}"
+      ADMIN_PASS: "${ADMIN_PASS:?Set ADMIN_PASS in .env}"
+      SESSION_SECRET: "${SESSION_SECRET:?Set SESSION_SECRET in .env}"
+      OWRT_HOST: "${OWRT_HOST:-192.168.1.1}"
+      OWRT_USER: root
+      OWRT_KEY: /ssh/id_ed25519
+      WAN_IFACE: eth0
+      WAN_COUNTER_REMOTE: /etc/opennds-manager/wan-counter.state
+      WAN_TRAFFIC_FILE: /data/wan-traffic.json
+      WAN_USAGE_INTERVAL: 1
+      WAN_USAGE_MAX_GAP: 8
+      DOMAIN_RANK_FILE: /data/domain-rank.json
+      DOMAIN_LOG_FILE: /tmp/opennds-dns-queries.log
+      DOMAIN_REFRESH_INTERVAL: 1800
+      CLIENTS_CACHE_SECS: 0.75
+      NDS_CONF: /etc/config/opennds
+      PORTAL_DIR: /etc/opennds/htdocs
+      HOSTED_PORTAL_DIR: /data/hosted-portal
+      HOSTED_PORTAL_DEFAULT_DIR: /portal-default
+      HOSTED_PORTAL_CUSTOM_DIR: /portal-custom
+      FAS_BASE_URL: "${FAS_BASE_URL:?Set FAS_BASE_URL in .env}"
+    volumes:
+      - ./ssh:/ssh:ro
+      - ./data:/data

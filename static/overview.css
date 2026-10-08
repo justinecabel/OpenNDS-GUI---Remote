@@ -1,0 +1,18 @@
+/* DNS ranking uses the page width; watchlist controls live in a dialog. */
+#overview .domain-ranking { grid-template-columns: minmax(0,1fr); }
+#overview .domain-ranking > :is(.domain-ranking-heading,.domain-table-wrap,#domain_note) { grid-column: 1; grid-row: auto; }
+.domain-ranking-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.domain-ranking-heading .btn { flex: 0 0 auto; }
+.domain-watch-dialog { width: min(560px,calc(100vw - 32px)); }
+.domain-watch-dialog .domain-watch { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.domain-watch-dialog .domain-watch ul { display: flex; flex-direction: column; flex-wrap: nowrap; max-height: min(50dvh,420px); overflow-y: auto; }
+.domain-watch-dialog .domain-watch li { flex: 0 0 auto; justify-content: space-between; border-radius: 4px; padding: 7px 10px; }
+.domain-watch-dialog .domain-watch li .btn { width: 32px; min-height: 32px; }
+.domain-watch-dialog #domain_watch_out { margin: 10px 0 0; }
+.domain-watch-dialog #domain_watch_out:empty { display: none; }
+@media (max-width: 600px) {
+  .domain-watch-dialog .domain-add { flex-wrap: nowrap; }
+  .domain-watch-dialog .domain-add input { flex-basis: 0; }
+  .domain-watch-dialog .domain-add :is(input,button) { min-height: 44px; }
+  .domain-watch-dialog .domain-watch li .btn { width: 44px; min-height: 44px; }
+}

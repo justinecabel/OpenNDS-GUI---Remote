@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en" data-theme="hacker">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>openNDS Manager</title>
+<script src="{{ url_for('static', filename='themes.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='classic.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='buttons.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='navigation.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='clients.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='settings.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='overview.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='themes.css') }}">
+</head>
+<body>
+<header id="site_header" class="site-header"><div class="header-row"><div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="6" rx="1.5"/><rect x="2" y="15" width="6" height="6" rx="1.5"/><rect x="16" y="15" width="6" height="6" rx="1.5"/><path d="M12 9v3H5v3m7-3h7v3"/></svg></span><h1>openNDS<span>Manager</span></h1></div><div class="header-actions"><button id="nav_toggle" class="btn btn-ghost btn-inverse nav-toggle" type="button" aria-expanded="false" aria-controls="main_nav" aria-label="Navigation"><span id="nav_current">Overview</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button><div class="theme-control theme-desktop"><label for="theme_desktop">Theme</label><select id="theme_desktop" data-theme-select aria-label="Theme"><option value="classic">Classic</option><option value="hacker" selected>Hacker</option></select></div><form class="logout-form" method="post" action="/logout"><button type="submit" class="btn btn-ghost btn-inverse logout-button" aria-label="Log out" title="Log out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H4v16h5m4-8H8m6-5 5 5-5 5m5-5h-6"/></svg><span>Log out</span></button></form></div></div>
+<div class="nav-shell"><nav id="main_nav" class="main-nav" aria-label="Main">
+<a href="#overview" data-tab="overview" class="btn btn-nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16h16M8 16v-4m5 4V8m5 8V5"/></svg><span>Overview</span></a>
+<a href="#clients" data-tab="clients" class="btn btn-nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="13" height="11" rx="2"/><path d="M7 20h5m-3-5v5"/><rect x="17" y="10" width="4" height="10" rx="1"/></svg><span>Clients</span></a>
+<span class="nav-divider" aria-hidden="true"></span>
+<a href="#portal" data-tab="portal" class="btn btn-nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18m-9 5h6m-3-3 3 3-3 3M6 6.5h.01m3 0h.01"/></svg><span>Portal</span></a>
+<a href="#sqm" data-tab="sqm" class="btn btn-nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16m-4-4 4 4 4-4M17 20V4m-4 4 4-4 4 4"/></svg><span>SQM</span></a>
+<a href="#mode" data-tab="mode" class="btn btn-nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h5m0 0 5-6h4m-9 6 5 6h4"/><circle cx="4" cy="12" r="1.5"/><path d="m17 4 2 2-2 2m0 8 2 2-2 2"/></svg><span>Mode</span></a>
+<a href="#limits" data-tab="limits" class="btn btn-nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19a9 9 0 1 1 16 0H4ZM12 13l4-5M5 14h2m10 0h2M12 5v2"/><circle cx="12" cy="13" r="1"/></svg><span>Limits</span></a>
+<a href="#punishment" data-tab="punishment" class="btn btn-nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Zm0 5v5m0 3h.01"/></svg><span>Punishment</span></a>
+<span class="nav-divider" aria-hidden="true"></span>
+<a href="#status" data-tab="status" class="btn btn-nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 17h16"/><rect x="8" y="4" width="4" height="6" rx="1"/><rect x="14" y="14" width="4" height="6" rx="1"/></svg><span>Status &amp; Config</span></a>
+<a href="#logs" data-tab="logs" class="btn btn-nav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8l4 4v14H4V3h4Zm8 0v5h4M8 12h8m-8 4h6"/></svg><span>Logs</span></a>
+<div class="theme-control theme-mobile"><label for="theme_mobile">Theme</label><select id="theme_mobile" data-theme-select aria-label="Theme"><option value="classic">Classic</option><option value="hacker" selected>Hacker</option></select></div></nav></div></header>
+<main>
+<section id="overview">
+<div class="admin-heading"><div><h2>Overview</h2><p id="overviewupdated">Waiting…</p></div><button onclick="loadOverview()" class="btn btn-ghost" type="button">Refresh</button></div>
+<div class="overview-grid">
+<div class="metric"><div class="metric-label">Clients</div><div class="metric-value" id="ov_clients">—</div></div>
+<div class="metric"><div class="metric-label">DL (live)</div><div class="metric-value" id="ov_down">—</div></div>
+<div class="metric"><div class="metric-label">UL (live)</div><div class="metric-value" id="ov_up">—</div></div>
+<div class="metric"><div class="metric-label">WAN (day)</div><div class="metric-value" id="ov_today">—</div></div>
+<div class="metric"><div class="metric-label">WAN (month)</div><div class="metric-value" id="ov_month">—</div></div>
+</div>
+<div class="chart-heading"><h3>WAN · <span id="overview_chart_label">1h</span></h3><label>Range <select id="overview_chart_range" onchange="setOverviewRange(this.value)"><option value="60">1m</option><option value="300">5m</option><option value="900">15m</option><option value="1800">30m</option><option value="3600" selected>1h</option><option value="21600">6h</option><option value="86400">24h</option></select></label></div>
+<div class="traffic-legend"><span><i class="traffic-down"></i>DL</span><span><i class="traffic-up"></i>UL</span></div>
+<canvas id="trafficChart" role="img" aria-label="Download and upload traffic waves for the last 60 minutes"></canvas>
+<p id="overviewnote"></p>
+<div class="domain-ranking"><div class="domain-ranking-heading"><h3>DNS (24h)</h3><button id="domain_watch_open" onclick="showDomainWatchlist()" class="btn btn-secondary btn-sm" type="button" aria-haspopup="dialog" aria-controls="domain_watch_dialog">Watchlist <span id="domain_watch_count"></span></button></div>
+<dialog id="domain_watch_dialog" class="domain-detail domain-watch-dialog" aria-labelledby="domain_watch_title"><div class="domain-modal-head"><div><h4 id="domain_watch_title">DNS watchlist</h4><p>Changes reset counts.</p></div><form method="dialog"><button type="submit" class="btn btn-ghost btn-sm">Close</button></form></div><div class="domain-watch"><form id="domain_watch_form" class="domain-add"><label for="domain_watch_input" class="visually-hidden">Domain</label><input id="domain_watch_input" size="28" placeholder="example.com" autocomplete="off" autocapitalize="none" spellcheck="false" required autofocus><button id="domain_watch_add" class="btn btn-primary" type="submit" disabled>Add</button></form><p id="domain_watch_out" role="status"></p><ul id="domain_watch_list"></ul></div></dialog>
+<div class="domain-table-wrap"><table class="domain-table"><thead><tr><th>#</th><th>Domain</th><th>DNS</th></tr></thead><tbody id="domain_list"></tbody></table></div>
+<p id="domain_note"></p><dialog id="domain_detail" class="domain-detail"><div class="domain-modal-head"><div><h4 id="domain_detail_title"></h4><p id="domain_detail_total"></p></div><form method="dialog"><button type="submit" class="btn btn-ghost btn-sm">Close</button></form></div><div class="domain-detail-grid"><div><h5>Subdomains</h5><ul id="domain_subdomains"></ul></div><div><h5>Clients</h5><ul id="domain_clients"></ul></div></div></dialog></div>
+</section>
+<section id="clients"><div class="admin-heading"><div><h2>Clients</h2><p id="clientsupdated" class="client-note">Waiting…</p></div><button onclick="loadClients()" class="btn btn-ghost" type="button">Refresh</button></div><p id="client_action_out" class="client-action-result" role="status"></p>
+
+<div class="client-table-wrap" id="client_table_wrap"><table><thead><tr><th></th><th>Host</th><th>MAC</th><th>IP</th><th>State</th><th>Seen</th><th>DL<br><small>day / month</small></th><th>UL<br><small>day / month</small></th><th>Delay<br><small>ms</small></th><th class="client-rate-down">DL/s</th><th class="client-rate-up">UL/s</th><th class="client-actions"><span class="client-actions-label" aria-hidden="true">Actions</span><span class="client-actions-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="ctable"></tbody></table></div><div id="client_panbar" class="client-panbar" tabindex="0" aria-label="Pan client table horizontally"><div></div></div><dialog id="client_actions_dialog" class="domain-detail client-actions-dialog" aria-labelledby="client_actions_title"><div class="domain-modal-head"><div><h4 id="client_actions_title"></h4><p id="client_actions_identity"></p></div><form method="dialog"><button id="client_actions_close" type="submit" class="btn btn-ghost btn-sm">Close</button></form></div><div id="client_actions_buttons" class="client-actions-grid"></div></dialog><dialog id="client_detail" class="domain-detail client-detail"><div class="domain-modal-head"><div><h4 id="client_detail_title"></h4><p>WAN · <span id="client_chart_label">1h</span></p></div><form method="dialog"><button type="submit" class="btn btn-ghost btn-sm">Close</button></form></div><div class="chart-heading"><div class="traffic-legend"><span><i class="traffic-down"></i>DL</span><span><i class="traffic-up"></i>UL</span></div><label>Range <select id="client_chart_range" onchange="setClientRange(this.value)"><option value="60">1m</option><option value="300">5m</option><option value="900">15m</option><option value="1800">30m</option><option value="3600" selected>1h</option><option value="21600">6h</option><option value="86400">24h</option></select></label></div><canvas id="clientTrafficChart" class="client-traffic-chart" role="img" aria-label="Client download and upload traffic for the last 1 hour"></canvas><div class="client-dns-head"><p>DNS (last 100)</p><button type="button" id="client_dns_play" aria-pressed="true" class="btn btn-secondary btn-sm">Pause</button></div><ol id="client_last_dns" class="client-last-dns"></ol></dialog></section>
+<section id="status" class="admin-page settings-page">
+<div class="admin-heading"><div><h2>Status &amp; Config</h2></div><button onclick="loadStatus()" class="btn btn-ghost" type="button" aria-label="Refresh status">Refresh</button></div>
+<div class="settings-layout">
+<article class="settings-section"><div class="settings-heading"><div class="admin-card-head"><h3>Gateway</h3><span id="status_badge" class="admin-badge">Loading</span></div></div><div class="settings-body"><pre id="statusout" class="admin-output status-summary">Loading…</pre><details class="portal-guide"><summary>Raw</summary><pre id="status_raw" class="admin-output status-raw"></pre></details></div></article>
+<article class="settings-section"><div class="settings-heading"><h3>Config</h3><p class="hint">Backup: .bak · Restart to apply; sessions may drop.</p></div><div class="settings-body"><label for="confout" class="admin-field">/etc/config/opennds</label><textarea id="confout" class="config-editor" spellcheck="false" disabled aria-describedby="configout"></textarea>
+<div class="admin-actions"><button id="config_save" class="btn btn-primary" onclick="saveConfig()" disabled type="button" aria-label="Save configuration">Save</button><button onclick="loadConfig(true)" class="btn btn-ghost" type="button" aria-label="Reload file">Reload</button><button onclick="restartOpenNds()" class="btn btn-warning" type="button" aria-label="Restart openNDS">Restart</button></div>
+<p id="configout" class="admin-result" role="status"></p><p id="status_action_out" class="admin-result" role="status"></p></div></article>
+</div></section>
+<section id="portal" class="admin-page settings-page">
+<div class="admin-heading"><div><h2>Portal</h2></div><button onclick="window.open('/fas-preview','portal-preview','popup,width=430,height=720')" class="btn btn-secondary" type="button" aria-label="Preview portal">Preview</button></div>
+<div class="settings-layout">
+<article class="settings-section"><div class="settings-heading"><h3>Design</h3></div><div class="settings-body"><label class="admin-field settings-single">Template<select id="portal_type"></select></label>
+<div class="admin-actions"><button class="btn btn-primary" onclick="applyPortalType()" type="button" aria-label="Apply portal design">Apply</button></div><p id="portal_type_note" class="admin-result"></p></div></article>
+<article class="settings-section"><div class="settings-heading"><div class="admin-card-head"><h3>FAS</h3><span id="fas_badge" class="admin-badge">Checking</span></div><p class="hint">Switches to Portal + restarts openNDS.</p></div><div class="settings-body"><p id="fas_status" class="admin-result" role="status">Checking…</p><p class="admin-result">URL <code id="portal_address">—</code></p>
+<div class="admin-actions"><button class="btn btn-primary" onclick="configureHostedPortal()" type="button" aria-label="Configure openNDS">Configure</button><button onclick="loadHostedPortalStatus()" class="btn btn-ghost" type="button" aria-label="Check connection">Check</button></div>
+<details class="portal-guide"><summary>Router files</summary><p>Requires verified FAS. Keeps a timestamped backup.</p><div class="admin-actions"><button onclick="archiveRouterPortal()" class="btn btn-warning" type="button" aria-label="Archive old router files">Archive</button></div></details></div></article>
+<article class="settings-section"><div class="settings-heading"><h3>Upload</h3><p class="hint"><code>index.html</code> required · 200 files / 100 MiB max.</p></div><div class="settings-body"><label class="admin-field settings-single" for="pfolder">Folder<input type="file" id="pfolder" webkitdirectory directory multiple></label><div class="admin-actions"><button class="btn btn-primary" onclick="uploadPortalFolder()" type="button" aria-label="Upload portal folder">Upload</button></div>
+<details class="portal-guide"><summary>Template reference</summary><p>Nested assets supported.</p><pre>my-portal/
+  index.html
+  styles.css
+  assets/
+    logo.svg</pre><p>Assets: <code>/portal-content/…</code><br>Auth form: <code>{% raw %}{{CONTINUE_FORM}}{% endraw %}</code> (auto-appended if absent).</p><p>Scripts: inline / local, sandboxed.</p></details></div></article>
+<article class="settings-section"><div class="settings-heading"><h3>Downloads</h3></div><div class="settings-body"><div class="admin-actions"><button onclick="downloadTemplate('current')" class="btn btn-secondary" type="button" aria-label="Download Current ZIP">Current ZIP</button><button onclick="downloadTemplate('default')" class="btn btn-secondary" type="button" aria-label="Download Baseline ZIP">Baseline ZIP</button></div></div></article>
+</div><p id="portalout" class="admin-result" role="status"></p>
+</section>
+<section id="mode" class="admin-page settings-page">
+<div class="admin-heading"><div><h2>Mode</h2></div><span id="mode_current" class="admin-badge">Loading…</span></div>
+<article class="settings-section"><div class="settings-heading"><h3>Access</h3></div><div class="settings-body"><fieldset class="settings-options"><legend class="visually-hidden">Mode</legend>
+<label class="mode-choice"><input type="radio" name="opmode" value="portal"><span><span class="choice-title">Portal</span><span class="choice-description">Login · Limits</span></span></label>
+<label class="mode-choice"><input type="radio" name="opmode" value="auto_auth"><span><span class="choice-title">Auto-auth</span><span class="choice-description">No portal · Limits</span></span></label>
+<label class="mode-choice"><input type="radio" name="opmode" value="auto_trust"><span><span class="choice-title">Auto-trust</span><span class="choice-description">No portal · Unlimited</span></span></label>
+</fieldset>
+<div class="admin-actions"><button id="mode_apply" class="btn btn-primary" onclick="saveMode()" type="button" aria-label="Apply selected mode">Apply</button><button onclick="loadMode()" class="btn btn-ghost" type="button" aria-label="Reload current mode">Reload</button></div><p id="modeinfo" class="admin-result" role="status"></p>
+<p class="admin-note">Portal: clears auto-auth / auto-trust. Manual trust retained.</p></div></article>
+</section>
+<section id="limits" class="admin-page settings-page">
+<div class="admin-heading"><div><h2>Limits</h2></div><button onclick="loadLimits()" class="btn btn-ghost" type="button" aria-label="Reload settings">Reload</button></div>
+<p class="limits-intro">Blank = inherit · 0 = unlimited / no delay. Caps + delay require CAKE. Session changes: re-auth + counter reset.</p>
+<div class="settings-layout">
+<article class="settings-section"><div class="settings-heading"><h3>Profiles</h3><p class="hint">Copy to Default / Device to apply.</p></div><div class="settings-body"><div class="profile-name"><label>Profile<select id="lim_profile_select" onchange="selectLimitProfile()"></select></label><label>Name<input id="lim_profile_name" placeholder="Profile name"></label></div>
+<div id="lim_profile_fields" class="limit-fields"></div>
+<div class="limit-toolbar"><button onclick="saveLimitProfile()" class="btn btn-primary" type="button" aria-label="Save profile">Save</button><button onclick="deleteLimitProfile()" class="btn btn-danger" type="button" aria-label="Delete profile">Delete</button></div>
+<div class="limit-toolbar"><button onclick="applyLimitProfile('ld_')" class="btn btn-secondary" type="button" aria-label="Copy to default">To Default</button><button onclick="applyLimitProfile('lv_')" class="btn btn-secondary" type="button" aria-label="Copy to device">To Device</button><span id="lim_profile_out" class="limit-status"></span></div></div></article>
+<article class="settings-section"><div class="settings-heading"><h3>Default</h3></div><div class="settings-body"><div id="lim_default" class="limit-fields"></div><details><summary>Overuse</summary><p class="hint">Per DL / UL · Default only · 0 = off.</p><div class="limit-fields"><label class="limit-field">Trigger (s)<input id="throttle_trigger_secs" type="number" min="1" max="300" step="1" value="3"></label><label class="limit-field">Cap (KB/s)<input id="throttle_final_rate" type="number" min="0" step="1" value="0"></label><label class="limit-field">Reset (s)<input id="throttle_reset_secs" type="number" min="1" max="86400" step="1" value="30"></label></div><p id="throttle_info" class="hint" aria-live="polite"></p></details><div class="limit-toolbar"><button onclick="saveLimits('')" class="btn btn-primary" type="button" aria-label="Save default policy">Save</button><span id="lim_default_out" class="limit-status" role="status"></span></div></div></article>
+<article class="settings-section"><div class="settings-heading"><h3>Device</h3><p class="hint">Per MAC · Excluded from Overuse.</p></div><div class="settings-body"><label class="device-mac settings-single">MAC<input id="lim_mac" placeholder="aa:bb:cc:dd:ee:ff"></label>
+<div id="lim_dev" class="limit-fields" style="margin-top:12px"></div><div class="limit-toolbar"><button onclick="saveLimits(val('lim_mac'),true)" class="btn btn-primary" type="button" aria-label="Save device override">Save</button><button onclick="clearLimits()" class="btn btn-danger" type="button" aria-label="Clear override">Clear</button><span id="limout" class="limit-status"></span></div></div></article>
+<article class="settings-section"><div class="settings-heading"><h3>Overrides</h3></div><div class="settings-body"><div class="limit-table-wrap"><table><thead><tr><th>MAC</th><th>Session</th><th>UL (KB/s)</th><th>DL (KB/s)</th><th>UL (kB)</th><th>DL (kB)</th><th>Delay (ms)</th></tr></thead><tbody id="limtable"></tbody></table></div></div></article>
+</div>
+</section>
+<section id="punishment" class="admin-page settings-page">
+<div class="admin-heading"><div><h2>Punishment</h2></div><button onclick="loadPunishment()" class="btn btn-ghost" type="button" aria-label="Reload policy">Reload</button></div>
+<div class="settings-layout">
+<article class="settings-section"><div class="settings-heading"><h3>Policy</h3><p class="hint">Requires CAKE · DL delay / loss.</p></div><div class="settings-body"><form onsubmit="event.preventDefault();savePunishment()"><div class="admin-fields">
+<label class="admin-field">Delay (ms)<input id="pun_delay" type="number" min="1" max="10000" step="1" value="100" required></label>
+<label class="admin-field">Loss (%)<input id="pun_loss" type="number" min="0" max="100" step="any" value="0" required></label>
+<label class="admin-field">DL cap (KB/s)<input id="pun_down" type="number" min="0.125" step="any" value="128" required></label>
+<label class="admin-field">UL cap (KB/s)<input id="pun_up" type="number" min="0.125" step="any" value="64" required></label>
+</div><div class="admin-actions"><button id="pun_save" class="btn btn-primary" type="submit" aria-label="Save punishment policy">Save</button></div></form><p id="punout" class="admin-result" role="status"></p></div></article>
+<article class="settings-section"><div class="settings-heading"><div class="admin-card-head"><h3>Devices</h3><span id="pun_badge" class="admin-badge">Checking</span></div></div><div class="settings-body"><div class="admin-actions"><button onclick="show('clients')" class="btn btn-secondary" type="button" aria-label="Open Clients">Clients</button><button onclick="show('sqm')" class="btn btn-secondary" type="button" aria-label="Open SQM">SQM</button></div><p class="admin-note">Persistent per MAC · Lower cap wins · Trust / block excluded. Queue-type changes may wait for drain.</p></div></article>
+</div></section>
+<section id="sqm" class="sqm-page admin-page settings-page">
+<div class="sqm-heading"><div><h2>SQM</h2><p>LAN: ingress = UL · egress = DL.</p></div><div class="sqm-tools"><label for="sqm_unit">Units</label><select id="sqm_unit" onchange="changeSqmUnit(this.value)"><option value="KB/s">KB/s</option><option value="Mb/s">Mb/s</option><option value="MB/s">MB/s</option></select><button onclick="loadSqm()" class="btn btn-ghost" type="button" aria-label="Reload settings">Reload</button></div></div>
+<div class="settings-layout">
+<article class="settings-section"><div class="settings-heading"><h3>Base</h3><p class="hint">0 = unlimited.</p></div><div class="settings-body"><label class="sqm-toggle"><input type="checkbox" id="sqm_en"> Enabled</label>
+<div class="sqm-fields">
+<label class="sqm-field">Interface<select id="sqm_if"><option value="br-lan">br-lan (LAN)</option></select></label>
+<label class="sqm-field">UL <span class="sqm-direction">Ingress <span class="sqm-unit sqm-rate-unit">KB/s</span></span><input id="sqm_down" type="number" min="0" step="1" value="0"></label>
+<label class="sqm-field">DL <span class="sqm-direction">Egress <span class="sqm-unit sqm-rate-unit">KB/s</span></span><input id="sqm_up" type="number" min="0" step="1" value="0"></label>
+<label class="sqm-field">Qdisc<select id="sqm_qd"><option>cake</option><option>fq_codel</option></select></label>
+<label class="sqm-field">Script<select id="sqm_sc"><option>piece_of_cake.qos</option><option>layer_cake.qos</option><option>simple.qos</option><option>simplest.qos</option></select></label>
+</div><div class="sqm-actions"><button onclick="saveSqm()" class="btn btn-primary" type="button" aria-label="Apply base queue">Apply</button></div><pre id="sqmout" class="sqm-output"></pre></div></article>
+<article class="settings-section"><div class="settings-heading"><h3>WAN (day)</h3><p class="hint">DL + UL threshold · Resets at midnight.</p></div><div class="settings-body"><label class="sqm-toggle"><input type="checkbox" id="sqm_rule_en"> Enabled</label>
+<div class="sqm-fields">
+<label class="sqm-field">Threshold <span class="sqm-direction">DL + UL <span class="sqm-unit">GB</span></span><input id="sqm_rule_gb" type="number" min="0" step="0.01" value="1"></label>
+<label class="sqm-field">UL (limited) <span class="sqm-direction">Ingress <span class="sqm-unit sqm-rate-unit">KB/s</span></span><input id="sqm_rule_down" type="number" min="0" step="1" value="1024"></label>
+<label class="sqm-field">DL (limited) <span class="sqm-direction">Egress <span class="sqm-unit sqm-rate-unit">KB/s</span></span><input id="sqm_rule_up" type="number" min="0" step="1" value="512"></label>
+</div><div class="sqm-actions"><button onclick="saveSqmRule()" class="btn btn-primary" type="button" aria-label="Save daily rule">Save</button><button onclick="saveSqmRule(true)" class="btn btn-secondary" type="button" aria-label="Apply today (WAN rule)">Apply today</button><span id="sqm_rule_out" class="limit-status"></span></div><p id="sqm_rule_note" class="sqm-note"></p></div></article>
+</div>
+
+</section>
+<section id="logs" class="admin-page"><div class="admin-heading"><div><h2>Logs</h2></div><button onclick="loadLogs()" class="btn btn-ghost" type="button" aria-label="Refresh logs">Refresh</button></div><pre id="logout" class="admin-output log-output"></pre></section>
+
+</main>
+<script>
+const val=id=>document.getElementById(id).value;
+const $=id=>document.getElementById(id);
+const TAB_IDS=new Set(['overview','clients','status','portal','sqm','mode','limits','punishment','logs']);
+const TAB_ALIASES={config:'status'};
+let current='overview';
+function requestedTab(){const rawHash=location.hash.slice(1),rawQuery=new URLSearchParams(location.search).get('tab'),hash=TAB_ALIASES[rawHash]||rawHash,query=TAB_ALIASES[rawQuery]||rawQuery;return TAB_IDS.has(hash)?hash:TAB_IDS.has(query)?query:'overview';}
+function show(id,updateUrl=true){id=TAB_ALIASES[id]||id;if(!TAB_IDS.has(id))id='overview';const previous=current;current=id;if(previous!==id)window.scrollTo(0,0);document.querySelectorAll('section').forEach(s=>s.classList.toggle('active',s.id==id));document.querySelectorAll('#main_nav [data-tab]').forEach(button=>{const active=button.dataset.tab===id;button.classList.toggle('active',active);if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});const activeLink=document.querySelector('#main_nav [data-tab="'+id+'"]');$('nav_current').textContent=activeLink.textContent.trim();$('nav_toggle').setAttribute('aria-label','Navigation · '+activeLink.textContent.trim());setNavOpen(false);syncClientPanbar();if(id==='clients'&&previous!=='clients')requestAnimationFrame(()=>{const wrap=$('client_table_wrap');if(wrap){wrap.scrollLeft=0;syncClientPanbar(wrap);}});if(updateUrl&&location.hash!==`#${id}`)history.pushState({tab:id},'',`#${id}`);
+const loading=({overview:loadOverview,clients:loadClients,status:loadStatusConfig,portal:loadHostedPortalStatus,logs:loadLogs,sqm:loadSqm,mode:loadMode,limits:loadLimits,punishment:loadPunishment})[id]?.();return loading?.catch(error=>{const output={overview:'overviewnote',clients:'client_action_out',status:'statusout',portal:'portalout',logs:'logout',sqm:'sqmout',mode:'modeinfo',limits:'lim_default_out',punishment:'punout'};$(output[id]).textContent='Load failed: '+error.message;return false;});}
+function setNavOpen(open){const toggle=$('nav_toggle'),hadNavFocus=$('main_nav').contains(document.activeElement);$('site_header').classList.toggle('nav-open',open);toggle.setAttribute('aria-expanded',String(open));if(!open&&hadNavFocus&&matchMedia('(max-width: 1099px)').matches)toggle.focus();}
+$('nav_toggle').addEventListener('click',()=>setNavOpen($('nav_toggle').getAttribute('aria-expanded')!=='true'));
+$('main_nav').addEventListener('click',event=>{const link=event.target.closest('a[data-tab]');if(!link||event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;event.preventDefault();show(link.dataset.tab);});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('site_header').classList.contains('nav-open')){setNavOpen(false);$('nav_toggle').focus();}});
+document.addEventListener('click',event=>{if(!$('site_header').contains(event.target))setNavOpen(false);});
+matchMedia('(max-width: 1099px)').addEventListener('change',event=>{const toggleFocused=document.activeElement===$('nav_toggle');setNavOpen(false);if(!event.matches&&toggleFocused)document.querySelector('#main_nav [aria-current="page"]').focus();});
+async function api(url,opt){const r=await fetch(url,{cache:'no-store',...opt});return r.json();}
+let busy=false;
+async function post(b,outputId='client_action_out'){busy=true;const out=$(outputId);try{const j=await api('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+showResult(out,j,b.action+(b.mac?' · '+b.mac:'')+(/some queue changes remain pending/.test(j.output||'')?' · Pending':''));if(b.mac)await loadClients();return j;}catch(e){out.textContent='Action failed: '+e.message;return {ok:false};}finally{busy=false;}}
+function act(a,mac,minutes){return post({action:a,mac,minutes});}
+function showResult(element,result,success){element.textContent=result.ok?(result.tc_error||success):(result.output||'Failed');element.title=result.output||'';}
+async function settingsAction(sectionId,outputId,operation){
+if(busy)return;busy=true;const buttons=[...document.querySelectorAll('#'+sectionId+' .settings-body button')],disabled=buttons.map(button=>button.disabled);buttons.forEach(button=>button.disabled=true);
+try{return await operation();}catch(error){$(outputId).textContent='Failed: '+error.message;}finally{buttons.forEach((button,index)=>button.disabled=disabled[index]);busy=false;}
+}
+function compactGatewayStatus(output){
+const fields=[['Ver',/^Version:\s*(.+)$/m],['Uptime',/^Uptime:\s*(.+)$/m],['GW',/^Gateway(?: Name)?:\s*(.+)$/m],['FQDN',/^Gateway FQDN:\s*(.+)$/m],['IF',/^Managed interface:\s*(.+)$/m],['Upstream',/^Upstream gateway\(s\)\s*(.+)$/m],['FAS',/^FAS:\s*(.+)$/m],['Clients',/^(?:Current|Active) clients:\s*(.+)$/m],['Auth (boot)',/^Client authentications since start:\s*(.+)$/m],['DL (boot)',/^Total download:\s*(.+)$/m],['UL (boot)',/^Total upload:\s*(.+)$/m]];
+const rows=fields.flatMap(([label,pattern])=>{const match=output.match(pattern);return match?[label.padEnd(12)+match[1].replace(/^\[\s*(.*?)\s*\]$/,'$1').replace(/Secure Level (\d+), URL:/,'L$1 ·').replace(/(\d+) kByte/g,(_,value)=>fmt(value)).replace(/; average:/g,' · avg')]:[];});
+return rows.length?rows.join('\n'):output||'No status';
+}
+let statusPromise=null;
+async function loadStatus(){if(statusPromise)return statusPromise;statusPromise=(async()=>{try{const j=await api('/api/status');const output=j.output||'';$('statusout').textContent=j.ok?compactGatewayStatus(output):output||'Status failed';$('status_raw').textContent=output;$('status_badge').textContent=j.ok?'Live':'Error';$('status_badge').dataset.state=j.ok?'ready':'attention';}catch(e){$('statusout').textContent='Status failed: '+e.message;$('status_raw').textContent=$('statusout').textContent;$('status_badge').textContent='Error';$('status_badge').dataset.state='attention';}})().finally(()=>{statusPromise=null;});return statusPromise;}
+async function loadLogs(){const j=await api('/api/logs');$('logout').textContent=j.output;}
+let configLoaded=false,configPromise=null,configBaseline='';
+async function loadStatusConfig(){await loadStatus();if(!configLoaded)await loadConfig();}
+async function loadConfig(reload=false){
+if(configPromise)return configPromise;
+if(reload&&configLoaded&&$('confout').value!==configBaseline&&!confirm('Discard edits and reload Config?'))return;
+configPromise=(async()=>{try{const j=await api('/api/config');if(!j.ok){$('configout').textContent=j.output||'Config load failed.';return;}
+configBaseline=j.content??'';$('confout').value=configBaseline;configLoaded=true;$('confout').disabled=false;$('config_save').disabled=false;$('configout').textContent=reload?'Reloaded':'';
+}catch(e){$('configout').textContent='Config load failed: '+e.message;}})().finally(()=>{configPromise=null;});return configPromise;
+}
+async function saveConfig(){if(!configLoaded)return;const button=$('config_save'),out=$('configout'),content=$('confout').value;button.disabled=true;busy=true;
+try{const j=await api('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({content})});showResult(out,j,'Saved · Restart to apply');if(j.ok)configBaseline=content;
+}catch(e){out.textContent='Config save failed: '+e.message;}finally{button.disabled=false;busy=false;}}
+async function restartOpenNds(){if(!confirm('Restart openNDS? Sessions may drop.'))return;await post({action:'restart'},'status_action_out');await loadStatus();}
+const ts=v=>+v?new Date(v*1000).toLocaleString():'';
+const clock=v=>+v?new Date(v*1000).toLocaleTimeString([],{hour12:false}):'';
+const ageLabel=seconds=>seconds<60?Math.floor(seconds)+'s':seconds<3600?Math.floor(seconds/60)+'m':seconds<86400?Math.floor(seconds/3600)+'h':Math.floor(seconds/86400)+'d';
+// input is kilobytes (openNDS counters); scales to kB/MB/GB/TB
+const fmt=(v,s='')=>{if(v===''||v==null||isNaN(v))return '';v=+v;const u=['kB','MB','GB','TB'];let i=0;while(v>=1024&&i<3){v/=1024;i++;}return v.toFixed(i?2:1)+' '+u[i]+s;};
+const fmtBytes=v=>fmt((+v||0)/1024);
+const fmtRate=v=>v==null||v===''||!Number.isFinite(+v)?'—':fmt(+v/1024,'/s');
+let overviewData,overviewPromise=null;
+let overviewHistoryPromise=null,overviewHistoryLoaded=false,overviewHistoryAt=0;
+const HISTORY_REFRESH_MS=30000;
+let domainsPromise=null,domainsLoadedAt=0,domainWatched=[];
+const periodLabel=seconds=>seconds>=3600?(seconds/3600)+'h':seconds>=60?(seconds/60)+'m':seconds+'s';
+function drawRateChart(canvas,history,rangeSecs,height,emptyText,joinGap){
+const ctx=canvas.getContext('2d'),rect=canvas.getBoundingClientRect(),width=Math.max(1,Math.floor(rect.width)),dpr=window.devicePixelRatio||1;
+canvas.width=width*dpr;canvas.height=height*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,width,height);
+const palette=getComputedStyle(document.documentElement),color=name=>palette.getPropertyValue('--'+name).trim();
+const left=Number(color('chart-axis-size'))||58,right=12,top=18,bottom=34,plotWidth=width-left-right,plotHeight=height-top-bottom,baseline=top+plotHeight,
+  latest=Math.max(...history.map(point=>+point.at||0),0),start=latest-rangeSecs,points=history.filter(point=>(+point.at||0)>=start),
+  values=points.flatMap(point=>[point.download,point.upload]).filter(value=>value!=null&&Number.isFinite(+value)).map(Number),max=Math.max(1,...values);
+ctx.font='12px '+color('chart-font');ctx.fillStyle=color('chart-label');ctx.strokeStyle=color('chart-grid');ctx.lineWidth=1;
+for(let i=0;i<=4;i++){const y=top+plotHeight*i/4;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(width-right,y);ctx.stroke();ctx.fillText(fmtRate(max*(4-i)/4),3,y+4);}
+function wave(field,color,rgb){
+  const segments=[];let segment=[],previous=null;
+  function finish(){if(segment.length)segments.push(segment);segment=[];previous=null;}
+  for(const point of points){
+    const value=point[field],at=+point.at;
+    if(value==null||!Number.isFinite(+value)||!at){finish();continue;}
+    if(previous&&(at<=previous.at||at-previous.at>joinGap))finish();
+    const sample={at,x:left+Math.max(0,Math.min(1,(at-start)/rangeSecs))*plotWidth,y:baseline-(+value/max*plotHeight)};
+    segment.push(sample);previous=sample;
+  }
+  finish();
+  const fill=ctx.createLinearGradient(0,top,0,baseline);fill.addColorStop(0,`rgba(${rgb},0.13)`);fill.addColorStop(1,`rgba(${rgb},0.01)`);
+  ctx.lineWidth=1.8;ctx.lineCap='round';ctx.lineJoin='round';
+  for(const samples of segments){
+    const first=samples[0],last=samples[samples.length-1],path=new Path2D();path.moveTo(first.x,first.y);
+    for(let i=1;i<samples.length;i++){
+      const a=samples[i-1],b=samples[i],mid=(a.x+b.x)/2;
+      // Round each transition without averaging samples or overshooting their peaks.
+      path.bezierCurveTo(mid,a.y,mid,b.y,b.x,b.y);
+    }
+    const area=new Path2D(path);area.lineTo(last.x,baseline);area.lineTo(first.x,baseline);area.closePath();ctx.fillStyle=fill;ctx.fill(area);
+    ctx.strokeStyle=color;ctx.stroke(path);
+    if(samples.length===1){ctx.beginPath();ctx.arc(first.x,first.y,1.5,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();}
+  }
+}
+wave('download',color('chart-download'),color('chart-download-rgb'));wave('upload',color('chart-upload'),color('chart-upload-rgb'));
+ctx.fillStyle=color('chart-label');ctx.fillText(periodLabel(rangeSecs)+' ago',left,height-10);ctx.fillText(periodLabel(rangeSecs/2)+' ago',left+plotWidth/2-22,height-10);ctx.fillText('now',width-right-24,height-10);
+if(!values.length)ctx.fillText(emptyText,left+10,top+24);
+}
+const CHART_RANGES=new Set([60,300,900,1800,3600,21600,86400]);
+function chartRange(value){const seconds=Number(value);return CHART_RANGES.has(seconds)?seconds:3600;}
+function savedChartRange(key){try{return chartRange(localStorage.getItem(key));}catch(e){return 3600;}}
+function saveChartRange(key,value){try{localStorage.setItem(key,String(value));}catch(e){}}
+let overviewRangeSecs=savedChartRange('opennds-overview-range');
+function setOverviewRange(value){overviewRangeSecs=chartRange(value);saveChartRange('opennds-overview-range',overviewRangeSecs);$('overview_chart_range').value=String(overviewRangeSecs);$('overview_chart_label').textContent=periodLabel(overviewRangeSecs);$('trafficChart').setAttribute('aria-label','Download and upload traffic waves for the last '+periodLabel(overviewRangeSecs));drawTraffic(overviewData?.history||[]);}
+function drawTraffic(history=[]){drawRateChart($('trafficChart'),history,overviewRangeSecs,260,'No samples',overviewRangeSecs>3600?180:10);}
+function appendOverviewSample(j){if(!overviewHistoryLoaded||!overviewData?.history)return;const at=+j.updated_at;if(!at)return;
+const history=overviewData.history,last=history[history.length-1],sample={at,download:+j.live?.download||0,upload:+j.live?.upload||0};
+if(last?.at===at)history[history.length-1]=sample;else if(!last||at>last.at){history.push(sample);while(history.length&&(+history[0].at||0)<at-86400)history.shift();}
+drawTraffic(history);}
+function mergeHistory(previous,j){
+const points=new Map((j.reset?[]:previous||[]).map(point=>[Number(point.at),point]));
+for(const point of j.history||[])points.set(Number(point.at),point);
+return [...points.values()].filter(point=>Number(point.at)>=Number(j.history_start_at||0)&&
+  (!j.recent_start_at||Number(point.at)>=Number(j.recent_start_at)||Number(point.at)%60===0))
+  .sort((a,b)=>Number(a.at)-Number(b.at));
+}
+let overviewHistoryCursor=null,overviewHistoryGeneration='';
+async function loadOverviewHistory(){
+if(overviewHistoryPromise)return overviewHistoryPromise;
+overviewHistoryPromise=(async()=>{
+const query=overviewHistoryCursor===null?'':'?'+new URLSearchParams({since:overviewHistoryCursor,generation:overviewHistoryGeneration});
+const j=await api('/api/overview/history'+query);if(!j.ok)return;
+const merged=mergeHistory(overviewData?.history,j);
+overviewData=Object.assign(overviewData||{},j,{history:merged});
+overviewHistoryCursor=j.cursor;overviewHistoryGeneration=j.generation;
+overviewHistoryLoaded=true;overviewHistoryAt=Date.now();drawTraffic(merged);
+})().finally(()=>{overviewHistoryPromise=null;});return overviewHistoryPromise;
+}
+async function loadOverview(){if(overviewPromise)return overviewPromise;overviewPromise=(async()=>{const j=await api('/api/overview');if(!j.ok){$('overviewnote').textContent=j.output||'Overview failed';return;}
+overviewData=Object.assign(overviewData||{},j);$('ov_clients').textContent=j.connected??'—';$('ov_down').textContent=fmtRate(j.live?.download);$('ov_up').textContent=fmtRate(j.live?.upload);
+const today=(+j.today?.download||0)+(+j.today?.upload||0),month=(+j.month?.download||0)+(+j.month?.upload||0);
+$('ov_today').textContent=fmtBytes(today);$('ov_month').textContent=fmtBytes(month);
+$('overviewupdated').textContent=j.updated_at?clock(j.updated_at):'Waiting…';
+$('overviewnote').textContent=j.tracking_since?j.interface+' · Since '+new Date(j.tracking_since*1000).toLocaleDateString():'';
+appendOverviewSample(j);if(!overviewHistoryLoaded||Date.now()-overviewHistoryAt>=HISTORY_REFRESH_MS)loadOverviewHistory().catch(()=>{});if(!domainsLoadedAt||Date.now()-domainsLoadedAt>=60000)loadDomainRanking().catch(()=>{});})().finally(()=>{overviewPromise=null;});return overviewPromise;}
+function renderDomainCounts(id,items=[]){const list=$(id);list.textContent='';for(const item of items){const row=document.createElement('li'),name=document.createElement('span'),count=document.createElement('span');name.textContent=item.name;count.textContent=Number(item.queries||0).toLocaleString();row.append(name,count);list.appendChild(row);}}
+let domainDetailName='';
+function showDomainDetail(item){domainDetailName=item.domain;const detail=$('domain_detail');$('domain_detail_title').textContent=item.domain;$('domain_detail_total').textContent=Number(item.queries||0).toLocaleString()+' DNS';renderDomainCounts('domain_subdomains',item.subdomains);renderDomainCounts('domain_clients',item.clients);if(!detail.open)detail.showModal();}
+$('domain_detail').addEventListener('close',()=>{if(current==='overview')[...$('domain_list').querySelectorAll('button')].find(button=>button.dataset.domain===domainDetailName)?.focus({preventScroll:true});});
+$('domain_detail').addEventListener('click',event=>{if(event.target===$('domain_detail'))$('domain_detail').close();});
+let clientRangeSecs=savedChartRange('opennds-client-range'),clientHistory=[],clientHistoryResolution='minutes';
+function setClientRange(value){clientRangeSecs=chartRange(value);saveChartRange('opennds-client-range',clientRangeSecs);$('client_chart_range').value=String(clientRangeSecs);$('client_chart_label').textContent=periodLabel(clientRangeSecs);$('clientTrafficChart').setAttribute('aria-label','Client download and upload traffic waves for the last '+periodLabel(clientRangeSecs));drawClientTraffic(clientHistory);}
+function drawClientTraffic(history=[]){drawRateChart($('clientTrafficChart'),history,clientRangeSecs,260,'No samples',clientHistoryResolution==='seconds'?10:180);}
+let clientDetailMac='',clientHistoryTimer=null,clientDnsTimer=null,clientDnsFadeTimer=null,clientDnsPromise=null,clientDnsPlaying=true,clientDnsPlayedMs=0,clientDnsPlayStartedAt=0,clientDnsInitialLoad=true,clientDnsKnown=new Set(),clientDnsHighlights=new Map();
+const DNS_HIGHLIGHT_MS=30000;
+function clientDnsClock(){return clientDnsPlayedMs+(clientDnsPlaying&&clientDnsPlayStartedAt?Date.now()-clientDnsPlayStartedAt:0);}
+function clientDnsKey(entry){return String(entry.domain||'')+'\u0001'+String(entry.at||'');}
+function updateClientDnsButton(){const button=$('client_dns_play');button.textContent=clientDnsPlaying?'Pause':'Play';button.setAttribute('aria-pressed',String(clientDnsPlaying));button.setAttribute('aria-label',clientDnsPlaying?'Pause DNS':'Play DNS');}
+function renderClientDns(entries=[]){const list=$('client_last_dns'),now=clientDnsClock();list.textContent='';if(!entries.length){const row=document.createElement('li');row.textContent='No DNS';list.appendChild(row);return;}[...entries].reverse().forEach(entry=>{const key=clientDnsKey(entry),row=document.createElement('li'),domain=document.createElement('a'),when=document.createElement('time'),started=clientDnsHighlights.get(key);if(started!=null){const alpha=Math.max(0,1-(now-started)/DNS_HIGHLIGHT_MS);if(alpha>0)row.style.backgroundColor='rgba('+getComputedStyle(document.documentElement).getPropertyValue('--dns-highlight-rgb').trim()+', '+(alpha*.32).toFixed(3)+')';else clientDnsHighlights.delete(key);}domain.textContent=entry.domain;domain.href='https://'+entry.domain;domain.target='_blank';domain.rel='noopener noreferrer';when.textContent=clock(entry.at);when.title=ts(entry.at);row.append(domain,when);list.append(row);});}
+let clientDetailGeneration=0,clientHistoryPromise=null,clientHistoryController=null;
+let clientHistoryCursor=null,clientHistoryGeneration='';
+async function loadClientHistory(){
+if(!clientDetailMac||!$('client_detail').open||document.hidden||busy)return;
+if(clientHistoryPromise)return clientHistoryPromise;
+const mac=clientDetailMac,generation=clientDetailGeneration;
+clientHistoryController=new AbortController();
+const query=clientHistoryCursor===null?'':'?'+new URLSearchParams({since:clientHistoryCursor,generation:clientHistoryGeneration});
+const promise=(async()=>{try{
+const j=await api('/api/clients/'+encodeURIComponent(mac)+'/history'+query,{signal:clientHistoryController.signal});
+if(!j.ok||mac!==clientDetailMac||generation!==clientDetailGeneration||!$('client_detail').open||document.hidden)return;
+clientHistory=mergeHistory(clientHistory,j);clientHistoryCursor=j.cursor;clientHistoryGeneration=j.generation;
+clientHistoryResolution=j.recent_resolution||'minutes';drawClientTraffic(clientHistory);
+}catch(_){/* Preserve the graph while its endpoint recovers. */}
+finally{if(generation===clientDetailGeneration){clientHistoryPromise=null;clientHistoryController=null;}}})();
+clientHistoryPromise=promise;return promise;
+}
+async function loadClientDns(){if(!clientDnsPlaying||!clientDetailMac||!$('client_detail').open||document.hidden||busy||clientDnsPromise)return clientDnsPromise;const mac=clientDetailMac,generation=clientDetailGeneration;clientDnsPromise=(async()=>{try{const j=await api('/api/clients/'+encodeURIComponent(mac)+'/dns');if(!clientDnsPlaying||mac!==clientDetailMac||generation!==clientDetailGeneration||!$('client_detail').open||document.hidden||!j.ok)return;const entries=j.last_dns||[];for(const entry of entries){const key=clientDnsKey(entry);if(!clientDnsInitialLoad&&!clientDnsKnown.has(key))clientDnsHighlights.set(key,clientDnsClock());clientDnsKnown.add(key);}clientDnsInitialLoad=false;clientDnsEntries=entries;renderClientDns(entries);}catch(_){/* Keep the last known DNS list while the local endpoint recovers. */}})().finally(()=>{clientDnsPromise=null;});return clientDnsPromise;}
+function startClientDnsPlayback(){if(clientDnsPlaying)return;clientDnsPlaying=true;clientDnsPlayStartedAt=Date.now();updateClientDnsButton();loadClientDns();clearInterval(clientDnsTimer);clearInterval(clientDnsFadeTimer);clientDnsTimer=setInterval(loadClientDns,3000);clientDnsFadeTimer=setInterval(()=>{if(!document.hidden)renderClientDns([...clientDnsEntries]);},1000);}
+function pauseClientDnsPlayback(){if(!clientDnsPlaying)return;clientDnsPlayedMs=clientDnsClock();clientDnsPlaying=false;clientDnsPlayStartedAt=0;updateClientDnsButton();clearInterval(clientDnsTimer);clearInterval(clientDnsFadeTimer);clientDnsTimer=clientDnsFadeTimer=null;}
+let clientDnsEntries=[];
+function showClientDetail(client){clientHistoryController?.abort();clientDetailGeneration++;clientHistoryPromise=null;clientHistoryController=null;clientHistoryCursor=null;clientHistoryGeneration='';const detail=$('client_detail');$('client_detail_title').textContent=client.hostname||client.mac||'Client';clientDetailMac=(client.mac||'').toLowerCase();clientHistory=[];clientHistoryResolution='minutes';clientDnsEntries=[];clientDnsKnown=new Set();clientDnsHighlights=new Map();clientDnsInitialLoad=true;clientDnsPlaying=true;clientDnsPlayedMs=0;clientDnsPlayStartedAt=Date.now();updateClientDnsButton();if(!detail.open)detail.showModal();drawClientTraffic(clientHistory);renderClientDns();loadClientHistory();loadClientDns();clearInterval(clientHistoryTimer);clearInterval(clientDnsTimer);clearInterval(clientDnsFadeTimer);clientHistoryTimer=setInterval(loadClientHistory,1000);clientDnsTimer=setInterval(loadClientDns,3000);clientDnsFadeTimer=setInterval(()=>{if(!document.hidden)renderClientDns(clientDnsEntries);},1000);}
+$('client_detail').addEventListener('click',event=>{if(event.target===$('client_detail'))$('client_detail').close();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&$('client_detail').open){loadClientHistory();loadClientDns();}syncClientPanbar();});
+$('client_dns_play').addEventListener('click',()=>{if(clientDnsPlaying)pauseClientDnsPlayback();else startClientDnsPlayback();});
+$('client_detail').addEventListener('close',()=>{clientHistoryController?.abort();clientDetailGeneration++;clientHistoryPromise=null;clientHistoryController=null;const focusKey=clientDetailMac+':detail';clientDetailMac='';if(current==='clients')[...$('ctable').querySelectorAll('button')].find(button=>button.dataset.clientFocus===focusKey)?.focus({preventScroll:true});clearInterval(clientHistoryTimer);clearInterval(clientDnsTimer);clearInterval(clientDnsFadeTimer);clientHistoryTimer=clientDnsTimer=clientDnsFadeTimer=null;});
+async function editClientName(client){const name=prompt('Name · '+(client.mac||'client')+' (blank = DHCP):',client.custom_name||'');if(name===null)return;busy=true;try{const j=await api('/api/clients/name',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mac:client.mac,name})});if(!j.ok){alert(j.output||'Name save failed');return;}await loadClients();}catch(e){alert('Name save failed: '+e.message);}finally{busy=false;}}
+let domainWatchLoaded=false;
+function domainWatchControls(disabled){$('domain_watch_input').disabled=disabled;$('domain_watch_add').disabled=disabled;$('domain_watch_list').querySelectorAll('button').forEach(button=>button.disabled=disabled);}
+function renderDomainWatchlist(domains=[]){const next=[...new Set(domains)].sort(),list=$('domain_watch_list');domainWatchLoaded=true;$('domain_watch_count').textContent='('+next.length+')';$('domain_watch_add').disabled=busy;
+if(list.children.length&&JSON.stringify(next)===JSON.stringify(domainWatched))return;
+const focused=[...list.querySelectorAll('button')].indexOf(document.activeElement);domainWatched=next;list.textContent='';for(const domain of domainWatched){const row=document.createElement('li'),name=document.createElement('span'),remove=document.createElement('button');name.textContent=domain;remove.type='button';remove.className='btn btn-ghost btn-danger btn-icon btn-xs';remove.textContent='×';remove.setAttribute('aria-label','Remove '+domain);remove.disabled=busy;remove.onclick=()=>saveDomainWatchlist(domainWatched.filter(item=>item!==domain));row.append(name,remove);list.appendChild(row);}if(!domainWatched.length){const row=document.createElement('li');row.textContent='No domains';list.appendChild(row);}if(focused>=0){const buttons=list.querySelectorAll('button');(buttons[Math.min(focused,buttons.length-1)]||$('domain_watch_input')).focus({preventScroll:true});}}
+async function showDomainWatchlist(){const dialog=$('domain_watch_dialog');if(!busy)$('domain_watch_out').textContent='';if(!dialog.open)dialog.showModal();$('domain_watch_input').focus({preventScroll:true});try{await loadDomainRanking();}catch(error){$('domain_watch_out').textContent='Load failed: '+error.message;}}
+$('domain_watch_dialog').addEventListener('close',()=>{if(current==='overview')$('domain_watch_open').focus({preventScroll:true});});
+$('domain_watch_dialog').addEventListener('click',event=>{const dialog=$('domain_watch_dialog'),r=dialog.getBoundingClientRect();if(event.target===dialog&&(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom))dialog.close();});
+$('domain_watch_form').addEventListener('submit',event=>{event.preventDefault();addDomainWatch();});
+async function saveDomainWatchlist(domains){if(busy||!domainWatchLoaded)return false;const note=$('domain_watch_out'),focused=[...$('domain_watch_list').querySelectorAll('button')].indexOf(document.activeElement);busy=true;domainWatchControls(true);note.textContent='Saving…';try{await domainsPromise;const j=await api('/api/domains/watch',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({domains})});if(!j.ok){note.textContent=j.output||'Watchlist save failed';return false;}renderDomainWatchlist(j.watched||domains);domainsLoadedAt=0;note.textContent='Saved';await loadDomainRanking();return true;}catch(error){note.textContent='Watchlist save failed: '+error.message;return false;}finally{busy=false;domainWatchControls(false);if(focused>=0&&$('domain_watch_dialog').open){const buttons=$('domain_watch_list').querySelectorAll('button');(buttons[Math.min(focused,buttons.length-1)]||$('domain_watch_input')).focus({preventScroll:true});}}}
+async function addDomainWatch(){const input=$('domain_watch_input'),domain=input.value.trim();if(!domain)return;if(await saveDomainWatchlist([...domainWatched,domain])){input.value='';if($('domain_watch_dialog').open)input.focus({preventScroll:true});}}
+async function loadDomainRanking(){if(domainsPromise)return domainsPromise;domainsPromise=(async()=>{const j=await api('/api/domains'),list=$('domain_list'),note=$('domain_note'),detail=$('domain_detail');if(!j.ok){note.textContent=j.output||'DNS load failed';if($('domain_watch_dialog').open)$('domain_watch_out').textContent=note.textContent;return;}list.textContent='';renderDomainWatchlist(j.watched||[]);if(j.error){note.textContent=j.error;domainsLoadedAt=Date.now();return;}(j.domains||[]).forEach((item,index)=>{const row=document.createElement('tr'),rank=document.createElement('td'),domain=document.createElement('td'),total=document.createElement('td'),button=document.createElement('button');rank.textContent=String(index+1);button.className='domain-row-button btn btn-link';button.textContent=item.domain;button.dataset.domain=item.domain;button.onclick=()=>showDomainDetail(item);domain.appendChild(button);total.textContent=Number(item.queries||0).toLocaleString();row.append(rank,domain,total);list.appendChild(row);});if(detail.open){if((j.watched||[]).includes(domainDetailName))showDomainDetail((j.domains||[]).find(item=>item.domain===domainDetailName)||{domain:domainDetailName,queries:0});else detail.close();}note.textContent=!j.watched?.length?'No domains':j.domains?.length?'':'Waiting…';domainsLoadedAt=Date.now();})().finally(()=>{domainsPromise=null;});return domainsPromise;}
+let clientsPromise=null;
+function syncClientPanbar(source){const wrap=$('client_table_wrap'),bar=$('client_panbar');if(!wrap||!bar)return;const visible=current==='clients'&&document.visibilityState!=='hidden',overflow=wrap.scrollWidth>wrap.clientWidth+1;
+if(visible){const actions=wrap.querySelector('th.client-actions'),upload=wrap.querySelector('th.client-rate-up');if(actions&&upload){wrap.style.setProperty('--client-actions-width',actions.getBoundingClientRect().width+'px');wrap.style.setProperty('--client-rate-up-width',upload.getBoundingClientRect().width+'px');}}
+bar.classList.toggle('active',visible&&overflow&&!matchMedia('(max-width: 900px)').matches);bar.firstElementChild.style.width=wrap.scrollWidth+'px';if(source===bar)wrap.scrollLeft=bar.scrollLeft;else bar.scrollLeft=wrap.scrollLeft;}
+$('client_table_wrap').addEventListener('scroll',()=>syncClientPanbar($('client_table_wrap')));
+$('client_panbar').addEventListener('scroll',()=>syncClientPanbar($('client_panbar')));
+function wanUsageCell(today,month){const td=document.createElement('td');td.className='wan-usage';
+const current=document.createElement('span'),period=document.createElement('span');current.textContent=fmtBytes(today);current.title='Day';current.setAttribute('aria-label','Day '+current.textContent);period.className='wan-month';period.textContent=fmtBytes(month);period.title='Month';period.setAttribute('aria-label','Month '+period.textContent);td.append(current,period);return td;}
+const CLIENT_BUTTON_VARIANTS={block:'btn-danger',punish:'btn-warning',delete:'btn-danger',limits:'btn-info'};
+function clientActionButton(action){const button=document.createElement('button');button.type='button';button.className='btn btn-sm '+(CLIENT_BUTTON_VARIANTS[action]||'btn-secondary');button.textContent=action;return button;}
+function clientActionDots(){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','currentColor');svg.setAttribute('aria-hidden','true');for(const x of [5,12,19]){const circle=document.createElementNS('http://www.w3.org/2000/svg','circle');circle.setAttribute('cx',x);circle.setAttribute('cy',12);circle.setAttribute('r',1.6);svg.appendChild(circle);}return svg;}
+function clientActions(client){const actions=[client.blocked?'unblock':'block',client.trusted?'untrust':'trust'];if(!client.blocked&&!client.trusted)actions.push(client.punished?'unpunish':'punish');if(!client.online)actions.push('delete');if(client.mac)actions.push('limits');return actions;}
+function runClientAction(action,client){if(action==='limits')return editLimits(client.mac.toLowerCase());if(action==='delete'&&!confirm('Delete history · '+client.mac+'?'))return;return act(action,client.mac);}
+let clientActionsMac='';
+function showClientActions(client){const dialog=$('client_actions_dialog');clientActionsMac=client.mac;$('client_actions_title').textContent=client.hostname||client.mac;$('client_actions_identity').textContent=[client.ip,client.mac].filter(Boolean).join(' · ');const buttons=$('client_actions_buttons');buttons.textContent='';for(const action of clientActions(client)){const button=clientActionButton(action);button.onclick=()=>{dialog.close();runClientAction(action,client);};buttons.appendChild(button);}if(!dialog.open)dialog.showModal();}
+$('client_actions_dialog').addEventListener('click',event=>{if(event.target===$('client_actions_dialog'))$('client_actions_dialog').close();});
+$('client_actions_dialog').addEventListener('close',()=>{const trigger=[...document.querySelectorAll('.client-actions-more')].find(button=>button.dataset.mac===clientActionsMac);if(trigger?.getClientRects().length)trigger.focus({preventScroll:true});clientActionsMac='';});
+async function loadClients(){
+if(clientsPromise)return clientsPromise;clientsPromise=(async()=>{
+const j=await api('/api/clients');const t=$('ctable'),focusKey=t.contains(document.activeElement)?document.activeElement.dataset.clientFocus:null;t.textContent='';
+const age=j.sampled_at?Math.max(0,Math.floor(Date.now()/1000-Number(j.sampled_at))):null;$('clientsupdated').textContent=age===null?'Waiting…':`Sync ${age}s${j.stale?' · Stale':''}`;
+if(!j.ok){t.innerHTML='<tr><td colspan=12></td></tr>';t.querySelector('td').textContent=j.output;return;}
+const c=j.data.clients||{};
+const list=Object.keys(c).map(k=>[k,c[k]]).sort((a,b)=>(b[1].online-a[1].online)||(a[1].hostname||'').localeCompare(b[1].hostname||''));
+for(const [k,x] of list){const tr=document.createElement('tr');if(!x.online)tr.classList.add('offline');
+const added=x.punished?'+'+(x.added_ping_ms||0)+' ms':'—',throttle=x.throttle?.download&&x.throttle?.upload?'THR DL/UL':x.throttle?.download?'THR DL':x.throttle?.upload?'THR UL':'';
+[x.online?'\u25cf':'\u25cb',x.hostname,x.mac,x.ip,x.blocked?'BLOCK':x.trusted?'TRUST':x.punished?'PUNISH':throttle||({Authenticated:'AUTH',Preauthenticated:'PREAUTH',Offline:'OFF'}[x.state]||x.state),x.last_active?ageLabel(Math.max(0,Date.now()/1000-x.last_active)):'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v??'';tr.appendChild(td);});
+tr.children[0].title=x.online?'Online':'Offline';tr.children[0].setAttribute('aria-label',tr.children[0].title);tr.children[4].title=x.state||'';tr.children[5].title=ts(x.last_active);
+const hostnameCell=tr.children[1],hostnameButton=document.createElement('button'),nameEdit=document.createElement('button');hostnameCell.textContent='';hostnameCell.className='client-name-cell';hostnameButton.className='domain-row-button btn btn-link';hostnameButton.textContent=x.hostname||x.mac;hostnameButton.dataset.clientFocus=x.mac.toLowerCase()+':detail';hostnameButton.onclick=()=>showClientDetail(x);nameEdit.className='client-name-edit btn btn-ghost btn-xs';nameEdit.dataset.clientFocus=x.mac.toLowerCase()+':name';nameEdit.type='button';nameEdit.textContent='edit';nameEdit.title='Edit display name';nameEdit.onclick=event=>{event.preventDefault();event.stopPropagation();editClientName(x);};hostnameCell.append(hostnameButton,nameEdit);
+if(x.limits_pending||x.tc_pending_message){const pending=document.createElement('small');pending.style.display='block';pending.textContent=x.tc_pending_message?'TC pending':x.limits_refreshing?'Re-auth':'Limits pending';pending.title=[x.limits_pending_message,x.tc_pending_message].filter(Boolean).join(' ');tr.children[4].appendChild(pending);}
+tr.append(wanUsageCell(x.wan_today_download_bytes,x.wan_month_download_bytes),wanUsageCell(x.wan_today_upload_bytes,x.wan_month_upload_bytes));
+const pingCell=document.createElement('td');pingCell.textContent=added;tr.appendChild(pingCell);
+[[fmtRate(x.wan_download_rate),'client-rate-down'],[fmtRate(x.wan_upload_rate),'client-rate-up']].forEach(([value,className])=>{const td=document.createElement('td');td.className=className;td.textContent=value;tr.appendChild(td);});
+const td=document.createElement('td'),inline=document.createElement('div');td.className='client-actions';inline.className='client-actions-inline';
+for(const action of clientActions(x)){const button=clientActionButton(action);button.dataset.clientFocus=x.mac.toLowerCase()+':'+action;button.onclick=()=>runClientAction(action,x);inline.appendChild(button);}
+const more=document.createElement('button');more.type='button';more.className='btn btn-ghost btn-sm client-actions-more';more.dataset.mac=x.mac;more.dataset.clientFocus=x.mac.toLowerCase()+':more';more.appendChild(clientActionDots());more.title='Actions';more.setAttribute('aria-label','Actions · '+(x.hostname||x.mac));more.setAttribute('aria-haspopup','dialog');more.setAttribute('aria-controls','client_actions_dialog');more.onclick=()=>showClientActions(x);td.append(inline,more);
+tr.appendChild(td);t.appendChild(tr);}if(!list.length){const row=t.insertRow();const cell=row.insertCell();cell.colSpan=12;cell.textContent='No clients';}if(focusKey)[...t.querySelectorAll('button')].find(button=>button.dataset.clientFocus===focusKey)?.focus({preventScroll:true});})().finally(()=>{clientsPromise=null;syncClientPanbar();});return clientsPromise;}
+const enc=encodeURIComponent;
+const LK=[['timeout','Session (min)'],['up','UL (KB/s)'],['down','DL (KB/s)'],['upq','UL quota (kB)'],['downq','DL quota (kB)'],['latency_ms','Delay (ms)']];
+const TK=['trigger_secs','final_rate','reset_secs'];
+function limFields(el,pre){el.textContent='';LK.forEach(([k,l])=>{const s=document.createElement('label');s.className='limit-field';s.textContent=l;
+const i=document.createElement('input');i.id=pre+k;i.inputMode='decimal';s.appendChild(i);el.appendChild(s);});}
+const limVals=pre=>Object.fromEntries(LK.map(([k])=>[k,$(pre+k).value.trim()]));
+const limSet=(pre,o)=>LK.forEach(([k])=>$(pre+k).value=o?.[k]??'');
+const throttleVals=()=>Object.fromEntries(TK.map(k=>[k,$('throttle_'+k).value.trim()]));
+const throttleSet=o=>TK.forEach(k=>$('throttle_'+k).value=o?.[k]??{trigger_secs:3,final_rate:0,reset_secs:30}[k]);
+function updateThrottleInfo(){const out=$('throttle_info'),triggerSecs=Number(val('throttle_trigger_secs'))||0,final=Number(val('throttle_final_rate'))||0,reset=Number(val('throttle_reset_secs'))||0;if(!final){out.textContent='Off';return;}out.textContent=`≥95% / ${triggerSecs}s → ${final} KB/s · Reset: avg <${Number((final*.9).toFixed(3))} KB/s / ${reset}s`;}
+let limData={default:{},devices:{}};
+function selectLimitProfile(){const name=val('lim_profile_select'),profile=limData.profiles?.[name];if(!profile)return;$('lim_profile_name').value=name;limSet('lp_',profile);}
+function renderLimitProfiles(profiles={}){const select=$('lim_profile_select'),previous=select.value,names=Object.keys(profiles).sort();select.textContent='';names.forEach(name=>{const option=document.createElement('option');option.value=name;option.textContent=name;select.appendChild(option);});if(!names.length){$('lim_profile_name').value='';limSet('lp_',null);return;}if(profiles[previous])select.value=previous;selectLimitProfile();}
+function applyLimitProfile(prefix){limSet(prefix,limVals('lp_'));}
+async function saveLimitProfile(){if(!limitsLoaded)return;return settingsAction('limits','lim_profile_out',async()=>{const name=val('lim_profile_name').trim(),out=$('lim_profile_out');const j=await api('/api/limits/profile',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,limits:limVals('lp_')})});showResult(out,j,'Saved');if(j.ok){limData=j;renderLimitProfiles(j.profiles||{});$('lim_profile_select').value=name;selectLimitProfile();}});}
+async function deleteLimitProfile(){if(!limitsLoaded)return;return settingsAction('limits','lim_profile_out',async()=>{const name=val('lim_profile_name').trim(),out=$('lim_profile_out');if(!name)return;const j=await api('/api/limits/profile?name='+enc(name),{method:'DELETE'});showResult(out,j,'Deleted');if(j.ok){limData=j;renderLimitProfiles(j.profiles||{});}});}
+let limitsPromise=null,limitsLoaded=false;
+async function loadLimits(){if(limitsPromise)return limitsPromise;const buttons=[...document.querySelectorAll('#limits .settings-body button')];buttons.forEach(button=>button.disabled=true);limitsPromise=(async()=>{try{const j=await api('/api/limits');if(!j.ok){$('lim_default_out').textContent=j.output||'Limits load failed';return false;}limData=j;
+if(!$('ld_timeout')){limFields($('lim_default'),'ld_');limFields($('lim_dev'),'lv_');limFields($('lim_profile_fields'),'lp_');}
+limSet('ld_',j.default);throttleSet(j.default?.throttle);updateThrottleInfo();const t=$('limtable');t.textContent='';
+for(const m in j.devices){const tr=document.createElement('tr');const td=document.createElement('td');td.textContent=m;td.style.cursor='pointer';
+td.onclick=()=>{$('lim_mac').value=m;limSet('lv_',j.devices[m]);};tr.appendChild(td);
+LK.forEach(([k])=>{const c=document.createElement('td');c.textContent=j.devices[m][k]??'';tr.appendChild(c);});t.appendChild(tr);}renderLimitProfiles(j.profiles||{});limitsLoaded=true;return true;}catch(e){$('lim_default_out').textContent='Limits load failed: '+e.message;return false;}})().finally(()=>{limitsPromise=null;buttons.forEach(button=>button.disabled=!limitsLoaded);});return limitsPromise;}
+async function saveLimits(mac,device=false){if(!limitsLoaded)return;
+if(device){mac=mac.trim().toLowerCase();if(!/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(mac)){$('limout').textContent='Valid MAC required';return;}}
+return settingsAction('limits',mac?'limout':'lim_default_out',async()=>{const body={mac,limits:limVals(mac?'lv_':'ld_')};if(!mac)body.throttle=throttleVals();
+const j=await api('/api/limits',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+showResult($(mac?'limout':'lim_default_out'),j,'Saved'+(j.sessions_refreshing?' · Re-auth: '+j.sessions_refreshing:''));if(j.ok)await loadLimits();});}
+document.addEventListener('input',event=>{if(['throttle_trigger_secs','throttle_final_rate','throttle_reset_secs'].includes(event.target.id))updateThrottleInfo();});
+async function clearLimits(){if(!limitsLoaded)return;const mac=val('lim_mac').trim().toLowerCase();if(!mac)return;return settingsAction('limits','limout',async()=>{
+const j=await api('/api/limits',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mac,clear:true,limits:{}})});
+showResult($('limout'),j,'Cleared'+(j.sessions_refreshing?' · Re-auth: '+j.sessions_refreshing:''));if(j.ok){limSet('lv_',null);await loadLimits();}});}
+async function editLimits(mac){if(!await show('limits')||current!=='limits')return;$('lim_mac').value=mac;limSet('lv_',limData.devices[mac]);$('lim_mac').focus();}
+function renderPunishmentStatus(j){const badge=$('pun_badge');badge.textContent=j.tc_error?'Error':j.tc_active?'Active':'Idle';badge.dataset.state=j.tc_error?'attention':j.tc_active?'ready':'idle';}
+async function loadPunishment(){try{const j=await api('/api/punishment');if(!j.ok){$('punout').textContent=j.output||'Policy load failed';return;}
+$('pun_delay').value=j.delay_ms;$('pun_loss').value=j.loss_pct;$('pun_down').value=j.download;$('pun_up').value=j.upload;renderPunishmentStatus(j);$('punout').textContent=j.tc_error||'';
+}catch(e){$('punout').textContent='Policy load failed: '+e.message;}}
+async function savePunishment(){const button=$('pun_save');button.disabled=true;busy=true;try{const j=await api('/api/punishment',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({delay_ms:val('pun_delay'),loss_pct:val('pun_loss'),download:val('pun_down'),upload:val('pun_up')})});
+showResult($('punout'),j,'Saved');if(j.ok)renderPunishmentStatus(j);
+}catch(e){$('punout').textContent='Policy save failed: '+e.message;}finally{button.disabled=false;busy=false;}}
+const MODE_NAMES={portal:'Portal',auto_auth:'Auto-auth',auto_trust:'Auto-trust'};
+async function loadMode(){try{const j=await api('/api/mode');if(!j.ok){$('modeinfo').textContent=j.output||'Mode load failed';return;}
+document.querySelectorAll('input[name=opmode]').forEach(r=>r.checked=r.value==j.mode);
+$('mode_current').textContent=MODE_NAMES[j.mode]||j.mode;
+$('modeinfo').textContent=j.mode==='auto_trust'?'Trust · '+j.auto_trusted:j.mode==='auto_auth'?'Auth · '+j.auto_authed:'';
+}catch(e){$('modeinfo').textContent='Mode load failed: '+e.message;}}
+async function saveMode(){const r=document.querySelector('input[name=opmode]:checked');if(!r)return;const button=$('mode_apply');button.disabled=true;busy=true;
+try{const j=await api('/api/mode',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:r.value})});
+$('modeinfo').textContent=j.ok?'Applied · '+(MODE_NAMES[j.mode]||j.mode):j.output||'Mode apply failed';if(j.ok)$('mode_current').textContent=MODE_NAMES[j.mode]||j.mode;
+}catch(e){$('modeinfo').textContent='Mode apply failed: '+e.message;}finally{button.disabled=false;busy=false;}}
+function setSqmInterfaces(names,current,roles){const select=$('sqm_if'),values=[...new Set([...(names||[]),current||select.value].filter(Boolean))].sort();
+select.textContent='';if(!values.length){const option=document.createElement('option');option.textContent='No interfaces';option.value='';select.appendChild(option);return;}
+values.forEach(name=>{const option=document.createElement('option');option.value=name;option.textContent=name+(roles?.[name]?` (${roles[name]})`:'');select.appendChild(option);});if(current)select.value=current;}
+let sqmPromise=null,sqmLoaded=false;
+async function loadSqm(){if(sqmPromise)return sqmPromise;const buttons=[...document.querySelectorAll('#sqm .settings-body button')];buttons.forEach(button=>button.disabled=true);sqmPromise=(async()=>{try{const j=await api('/api/sqm');if(!j.ok){$('sqmout').textContent=j.output||'SQM load failed';return;}initSqmUnit();const c=j.config||{};
+$('sqm_en').checked=c.enabled=='1';
+setSqmInterfaces(j.interfaces,c.interface,j.interface_roles);
+setSqmRate('sqm_down',c.download);setSqmRate('sqm_up',c.upload);
+if(c.qdisc)$('sqm_qd').value=c.qdisc;if(c.script)$('sqm_sc').value=c.script;
+$('sqmout').textContent=j.configured?'':(j.output||'');await loadSqmRule();sqmLoaded=true;}catch(e){$('sqmout').textContent='SQM load failed: '+e.message;}})().finally(()=>{sqmPromise=null;buttons.forEach(button=>button.disabled=!sqmLoaded);});return sqmPromise;}
+async function saveSqm(){if(!sqmLoaded)return;return settingsAction('sqm','sqmout',async()=>{const j=await api('/api/sqm',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:$('sqm_en').checked,interface:val('sqm_if'),download:sqmRateInKbytes('sqm_down'),upload:sqmRateInKbytes('sqm_up'),qdisc:val('sqm_qd'),script:val('sqm_sc')})});
+showResult($('sqmout'),j,'Applied');});}
+const fmtGb=v=>(+v||0)/(1024**3);
+const SQM_RATE_INPUTS=['sqm_down','sqm_up','sqm_rule_down','sqm_rule_up'];
+const SQM_RATE_UNITS={
+  'KB/s':{kbPerUnit:1,decimals:0,step:'1'},
+  'Mb/s':{kbPerUnit:125,decimals:2,step:'0.01'},
+  'MB/s':{kbPerUnit:1000,decimals:2,step:'0.01'}
+};
+function sqmUnitConfig(unit){return SQM_RATE_UNITS[unit]||SQM_RATE_UNITS['KB/s'];}
+function sqmFormat(value,decimals){if(!Number.isFinite(value))return '0';return String(Number(value.toFixed(decimals)));}
+function sqmApplyUnitMetadata(unit){
+const cfg=sqmUnitConfig(unit);document.querySelectorAll('.sqm-rate-unit').forEach(el=>el.textContent=unit);
+SQM_RATE_INPUTS.forEach(id=>{const input=$(id);if(input){input.step=cfg.step;}});
+}
+function initSqmUnit(){
+const select=$('sqm_unit');if(!select)return;
+let saved='KB/s';try{if(SQM_RATE_UNITS[localStorage.getItem('opennds-sqm-unit')])saved=localStorage.getItem('opennds-sqm-unit');}catch(e){}
+select.value=saved;select.dataset.unit=saved;sqmApplyUnitMetadata(saved);
+}
+function changeSqmUnit(next){
+const select=$('sqm_unit'),previous=select?.dataset.unit||'KB/s',from=sqmUnitConfig(previous),to=sqmUnitConfig(next);
+if(!SQM_RATE_UNITS[next])next='KB/s';
+SQM_RATE_INPUTS.forEach(id=>{const input=$(id),number=Number(input?.value);if(input&&Number.isFinite(number))input.value=sqmFormat(number*from.kbPerUnit/to.kbPerUnit,to.decimals);});
+if(select){select.value=next;select.dataset.unit=next;}sqmApplyUnitMetadata(next);try{localStorage.setItem('opennds-sqm-unit',next);}catch(e){}
+}
+function sqmRateInKbytes(id){const number=Number(val(id));if(!Number.isFinite(number)||number<0)return val(id);return sqmFormat(number*sqmUnitConfig($('sqm_unit').value).kbPerUnit,6);}
+function setSqmRate(id,kbytes){$(id).value=sqmFormat(Number(kbytes||0)/sqmUnitConfig($('sqm_unit').value).kbPerUnit,sqmUnitConfig($('sqm_unit').value).decimals);}
+async function loadSqmRule(){const j=await api('/api/sqm/conditional');if(!j.ok){$('sqm_rule_out').textContent=j.output||'Rule load failed';return;}
+$('sqm_rule_en').checked=!!j.enabled;$('sqm_rule_gb').value=j.threshold_gb;setSqmRate('sqm_rule_down',j.download);setSqmRate('sqm_rule_up',j.upload);
+const ruleStatus=!j.enabled?'Off':j.forced_today?'Forced':j.active?'Active':'Waiting';$('sqm_rule_out').textContent=j.error||'';$('sqm_rule_note').textContent=`${ruleStatus} · ${j.wan_interface||'WAN'} · ${fmtGb(j.today_bytes).toFixed(2)} / ${j.threshold_gb} GB · ${j.today_date}`;}
+async function saveSqmRule(forceToday=false){if(!sqmLoaded)return;if(forceToday&&!confirm('Apply daily rates until midnight?'))return;return settingsAction('sqm','sqm_rule_out',async()=>{const j=await api('/api/sqm/conditional',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:$('sqm_rule_en').checked,threshold_gb:val('sqm_rule_gb'),download:sqmRateInKbytes('sqm_rule_down'),upload:sqmRateInKbytes('sqm_rule_up'),force_today:forceToday})});
+showResult($('sqm_rule_out'),j,forceToday?'Applied today':'Saved');if(j.ok)await loadSqmRule();});}
+async function loadPortalTypes(){const j=await api('/api/portal/types');if(!j.ok)return;const sel=$('portal_type');sel.textContent='';j.types.forEach(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=t.name;sel.appendChild(o);});if(j.current==='uploaded'){const o=document.createElement('option');o.value='uploaded';o.textContent='Uploaded';o.disabled=true;sel.appendChild(o);}sel.value=j.current;$('portal_type_note').textContent=j.current;}
+async function applyPortalType(){const t=$('portal_type').value;if(!t||t==='uploaded'||!confirm('Apply '+t+'? Previous portal backed up.'))return;const out=$('portalout');busy=true;try{const j=await api('/api/portal/type'+'s',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:t})});showResult(out,j,'Applied · '+t);await loadPortalTypes();}catch(e){out.textContent='Failed: '+e.message;}finally{busy=false;}}
+async function loadHostedPortalStatus(){const status=$('fas_status'),badge=$('fas_badge');try{await loadPortalTypes();const j=await api('/api/portal/fas');$('portal_address').textContent=j.url||'—';
+badge.textContent=j.ok&&j.router_ready?'Ready':'Setup';badge.dataset.state=j.ok&&j.router_ready?'ready':'attention';
+status.textContent=j.ok?`${MODE_NAMES[j.manager_mode]||j.manager_mode||'—'} · Router files: ${j.old_portal_archived?'archived':j.router_portal_empty?'empty':'present'}`:(j.output||'FAS failed');
+}catch(e){badge.textContent='Unavailable';badge.dataset.state='attention';status.textContent='FAS failed: '+e.message;}}
+async function configureHostedPortal(){if(!confirm('Configure FAS + switch to Portal + restart openNDS? Auto-auth sessions will drop.'))return;
+const out=$('portalout');busy=true;out.textContent='Configuring…';try{const j=await api('/api/portal/fas',{method:'POST'});showResult(out,j,'Configured');await loadHostedPortalStatus();}catch(e){out.textContent='FAS failed: '+e.message;}finally{busy=false;}}
+async function archiveRouterPortal(){if(!confirm('Archive router portal files? Timestamped backup retained.'))return;
+const out=$('portalout');busy=true;out.textContent='Archiving…';try{const j=await api('/api/portal/router/archive',{method:'POST'});showResult(out,j,'Archived');await loadHostedPortalStatus();}catch(e){out.textContent='Archive failed: '+e.message;}finally{busy=false;}}
+async function downloadTemplate(kind){const out=$('portalout');out.textContent='Preparing…';
+try{const r=await fetch('/api/portal/template/'+kind,{cache:'no-store'});if(!r.ok){const j=await r.json();out.textContent=j.output||'Download failed';return;}
+const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download='hosted-portal-'+kind+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);out.textContent='Downloaded';
+}catch(e){out.textContent='Download failed: '+e.message;}}
+async function uploadPortalFolder(){const files=[...$('pfolder').files],out=$('portalout');if(!files.length){out.textContent='Select folder';return;}if(!confirm(`Replace portal · ${files.length} files?`))return;
+busy=true;out.textContent=`Uploading · ${files.length} files…`;try{const fd=new FormData();files.forEach(file=>fd.append('files',file,file.webkitRelativePath||file.name));const r=await fetch('/api/portal/template/folder',{method:'POST',body:fd});const j=await r.json().catch(()=>({output:'Upload failed'}));if(r.ok&&j.ok){const count=j.output?.match(/hosted (\d+) portal file/),root=j.output?.match(/removed outer folder ("[^"]*")/),ignored=j.output?.match(/ignored (\d+) macOS metadata/);showResult(out,j,'Uploaded'+(count?' · '+count[1]+' files':'')+(root?' · Flattened '+root[1]:'')+(ignored?' · Ignored '+ignored[1]+' metadata':''));}else out.textContent=j.output||'Upload failed';
+}catch(e){out.textContent='Upload failed: '+e.message;}finally{busy=false;}}
+setOverviewRange(overviewRangeSecs);
+setClientRange(clientRangeSecs);
+// Poll only read-only tabs; configuration and template uploads are never interrupted.
+(async function poll(){
+  const started=performance.now();
+  if(!document.hidden&&!busy)await ({overview:loadOverview,clients:loadClients,status:loadStatus,logs:loadLogs})[current]?.().catch(()=>{});
+  setTimeout(poll,Math.max(0,1000-(performance.now()-started)));
+})();
+window.addEventListener('opennds-themechange',()=>{if(current==='overview')drawTraffic(overviewData?.history||[]);if($('client_detail').open){drawClientTraffic(clientHistory);renderClientDns(clientDnsEntries);}syncClientPanbar();});
+window.addEventListener('resize',()=>{if(current==='overview'&&overviewData)drawTraffic(overviewData.history);if($('client_detail').open)drawClientTraffic(clientHistory);syncClientPanbar();});
+window.addEventListener('hashchange',()=>show(requestedTab(),false));
+show(requestedTab(),false);
+</script>
+</body>
+</html>

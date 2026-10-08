@@ -1,0 +1,57 @@
+.client-table-wrap table :is(.client-rate-down,.client-rate-up,.client-actions) { border-left: 0; }
+.client-actions-glyph { display: none; }
+.client-actions-glyph svg, .client-actions-more svg { display: block; width: 20px; height: 20px; flex: 0 0 auto; }
+.client-table-wrap table td.client-actions button.client-actions-more { display: none; }
+.client-actions-dialog { max-width: 460px; }
+.client-actions-dialog .domain-modal-head p { margin-top: 7px; overflow-wrap: anywhere; font-size: 12px; }
+.client-actions-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.client-actions-grid .btn { min-height: 44px; }
+@media (max-width: 900px) {
+  .client-table-wrap { scrollbar-width: thin; scrollbar-color: #b7c8d5 transparent; }
+  .client-table-wrap::-webkit-scrollbar { display: block; height: 5px; }
+  .client-table-wrap::-webkit-scrollbar-thumb { background: #b7c8d5; border-radius: 3px; }
+  .client-table-wrap table .client-rate-down,
+  .client-table-wrap table .client-rate-up {
+    position: static;
+    background: var(--row-bg,#edf2f6);
+    border-left: 0;
+    box-shadow: none;
+  }
+  .client-table-wrap table .client-actions {
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    box-sizing: border-box;
+    padding: 6px;
+    text-align: center;
+    background: var(--row-bg,#edf2f6);
+    border-left: 0;
+    box-shadow: -3px 0 5px -4px #182e4033;
+  }
+  .client-table-wrap table th.client-actions { background: #edf2f6; }
+  .client-table-wrap .client-actions-label,
+  .client-table-wrap .client-actions-inline { display: none; }
+  .client-actions-glyph { display: inline-block; color: #526b7e; }
+  .client-table-wrap table td.client-actions button.client-actions-more {
+    display: inline-flex;
+    width: 36px;
+    min-height: 44px;
+    margin: 0;
+    padding: 0;
+    font-size: 22px;
+    color: #526b7e;
+  }
+  .client-actions-dialog {
+    position: fixed;
+    inset: auto 0 0;
+    width: 100%;
+    max-height: 85dvh;
+    margin: 0 auto;
+    padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+    border: 1px solid #d9e1e7;
+    border-bottom: 0;
+    border-radius: 14px 14px 0 0;
+    background: #fff;
+  }
+  .client-actions-dialog .domain-modal-head { margin-bottom: 10px; }
+}

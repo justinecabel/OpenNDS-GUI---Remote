@@ -1,0 +1,31 @@
+# Only application sources/assets may enter the image build context.
+# Keep SSH keys, persistent data, credentials, Git history and QA artifacts out.
+**
+!Dockerfile
+!app.py
+!templates/
+!templates/**
+!static/
+!static/**
+!portal/
+!portal/**
+!portal-custom/
+!portal-custom/**
+
+# Also exclude local artifacts if they appear inside an included directory.
+**/__pycache__
+**/*.py[cod]
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/id_rsa
+**/id_ed25519
+**/*.bak
+**/*.backup
+**/*.orig
+**/*.swp
+**/*.swo
+**/*~
+**/.DS_Store
+**/._*

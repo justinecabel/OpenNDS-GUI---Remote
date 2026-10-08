@@ -1,0 +1,60 @@
+/* Settings sections flow independently; no paired or equal-height panels. */
+.settings-layout { display: block; }
+.settings-section {
+  display: grid;
+  grid-template-columns: 180px minmax(0,1fr);
+  gap: 32px;
+  padding: 24px 0;
+  border: 0;
+  border-top: 1px solid #e0e6eb;
+  border-radius: 0;
+  background: transparent;
+}
+.settings-layout > .settings-section:first-child,
+#mode > .settings-section { border-top: 0; padding-top: 0; }
+.settings-section:last-child { padding-bottom: 0; }
+.settings-heading, .settings-body { min-width: 0; }
+.settings-heading h3 { margin: 0; color: #234; font-size: 16px; line-height: 1.5; }
+.settings-heading .hint { margin: 6px 0 0; color: #567; font-size: 12px; line-height: 1.5; }
+.settings-heading .admin-card-head { flex-wrap: wrap; justify-content: flex-start; gap: 10px; margin: 0; }
+.settings-page .settings-single { max-width: 520px; }
+.settings-page .profile-name { max-width: 620px; grid-template-columns: repeat(2,minmax(0,1fr)); margin-bottom: 14px; }
+.settings-page .limit-fields { grid-template-columns: repeat(6,minmax(0,1fr)); gap: 12px; }
+.settings-page .admin-fields { grid-template-columns: repeat(4,minmax(0,1fr)); }
+.settings-page .sqm-fields { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.settings-page .sqm-field > :is(input,select) { margin-top: auto; }
+.settings-page :is(.admin-actions,.sqm-actions,.limit-toolbar) { align-items: center; margin-top: 14px; gap: 8px; }
+.settings-page :is(.admin-actions,.sqm-actions,.limit-toolbar) .btn { flex: 0 0 auto; }
+.settings-body > .admin-actions:first-child { margin-top: 0; }
+.settings-page :is(.admin-note,.sqm-note) { margin: 14px 0 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: #567; font-size: 13px; }
+.settings-page .portal-guide { max-width: none; margin-top: 14px; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.settings-page .portal-guide summary { padding: 0; font-size: 13px; font-weight: 600; }
+.settings-page .portal-guide p { font-size: 13px; }
+.settings-page .settings-body > details { margin-top: 16px; }
+.settings-page .settings-body > details summary { color: #345; font-size: 13px; cursor: pointer; }
+.settings-page details .hint { margin: 12px 0; color: #567; font-size: 12px; }
+.settings-page details .limit-fields { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.settings-page .status-summary { margin-top: 0; min-height: 0; height: auto; max-height: 320px; font-family: ui-monospace,monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.settings-page .status-raw { height: 320px; max-height: 320px; }
+.settings-page .config-editor { margin-top: 8px; height: 360px; }
+.settings-options { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; border: 0; }
+.settings-options .mode-choice { align-items: center; gap: 10px; padding: 12px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.settings-options .mode-choice:hover { border: 0; }
+.settings-options .mode-choice:has(input:checked) { border: 0; background: transparent; box-shadow: none; }
+.settings-options .mode-choice:has(input:checked) .choice-title { color: #285d7d; }
+.settings-options .mode-choice input { margin: 0; accent-color: #285d7d; }
+.settings-options .mode-choice > span { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 18px; }
+.settings-options .mode-choice .choice-title { min-width: 90px; margin: 0; font-size: 14px; }
+.settings-options .mode-choice .choice-description { font-size: 12px; }
+@media (max-width: 1199px) {
+  .settings-page .limit-fields { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .settings-page .admin-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 900px) {
+  .settings-section { grid-template-columns: minmax(0,1fr); gap: 14px; padding: 20px 0; }
+}
+@media (max-width: 600px) {
+  .settings-page :is(.limit-fields,.admin-fields,.sqm-fields) { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .settings-page details .limit-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .settings-page .config-editor { height: 320px; }
+}

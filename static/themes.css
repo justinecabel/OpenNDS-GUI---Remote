@@ -1,0 +1,194 @@
+/* Classic uses the preserved base/component styles. Hacker overrides colours only here. */
+:root {
+  color-scheme: light;
+  --chart-font: sans-serif;
+  --chart-axis-size: 58;
+  --chart-label: #657787;
+  --chart-grid: #eaf0f4;
+  --chart-download: #528db8;
+  --chart-upload: #bc874b;
+  --chart-download-rgb: 82,141,184;
+  --chart-upload-rgb: 188,135,75;
+  --dns-highlight-rgb: 51,181,97;
+}
+.traffic-legend .traffic-down { background: var(--chart-download); }
+.traffic-legend .traffic-up { background: var(--chart-upload); }
+.theme-control { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.theme-control label { margin: 0; color: inherit; font-size: inherit; font-weight: 500; }
+.theme-control select {
+  box-sizing: border-box;
+  min-width: 104px;
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 1px solid #b7c9d7;
+  border-radius: 5px;
+  background: #fff;
+  color: #30495e;
+  font: inherit;
+  cursor: pointer;
+}
+.theme-control select:focus-visible { outline: 3px solid #69a3cd; outline-offset: 2px; }
+.theme-desktop { flex-shrink: 0; }
+.theme-mobile { display: none; }
+.theme-login { justify-content: space-between; margin-top: 14px; padding-top: 14px; border-top: 1px solid #d6dee5; color: #567; }
+@media (max-width: 1099px) {
+  .theme-desktop { display: none; }
+  .theme-mobile { display: flex; justify-content: space-between; grid-column: 1 / -1; margin-top: 4px; padding-top: 10px; border-top: 1px solid #dbe4eb; color: #526b7e; }
+}
+:root[data-theme=hacker] {
+  color-scheme: dark;
+  --terminal-bg: #070c09;
+  --terminal-surface: #0d1711;
+  --terminal-raised: #13231a;
+  --terminal-border: #2b4c38;
+  --terminal-text: #d5e8dc;
+  --terminal-muted: #a0bcaa;
+  --terminal-accent: #85e9a7;
+  --terminal-cyan: #79dce0;
+  --terminal-font: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  --chart-font: monospace;
+  --chart-axis-size: 84;
+  --chart-label: #a0bcaa;
+  --chart-grid: #20392a;
+  --chart-download: #85e9a7;
+  --chart-upload: #79dce0;
+  --chart-download-rgb: 133,233,167;
+  --chart-upload-rgb: 121,220,224;
+  --dns-highlight-rgb: 133,233,167;
+  background: var(--terminal-bg);
+  scrollbar-color: #3c604b var(--terminal-bg);
+}
+html[data-theme=hacker] body {
+  background: var(--terminal-bg);
+  background-image: linear-gradient(#85e9a704 1px,transparent 1px),linear-gradient(90deg,#85e9a704 1px,transparent 1px);
+  background-size: 32px 32px;
+  color: var(--terminal-text);
+  font-family: var(--terminal-font);
+}
+html[data-theme=hacker] section,
+html[data-theme=hacker] .card {
+  background: var(--terminal-surface);
+  border: 1px solid var(--terminal-border);
+  border-radius: 4px;
+  box-shadow: none;
+}
+html[data-theme=hacker] :is(h1,h2,h3,h4,h5) { color: #e5fbed; }
+html[data-theme=hacker] :is(.admin-heading h2,.sqm-heading h2,.settings-heading h3,.domain-ranking h3,.domain-detail-grid h5) { color: #e5fbed; }
+html[data-theme=hacker] :is(.hint,.metric-label,.traffic-legend,.chart-heading label,#overviewnote,#overviewupdated,.client-note,.client-action-result,.limits-intro,.limit-status,.sqm-note,.sqm-unit,.sqm-direction,.sqm-tools,.admin-result,.admin-note,.choice-description,.domain-detail p,.admin-field small,.settings-heading .hint,.settings-page details .hint,.settings-page .admin-note,.settings-page .sqm-note,.settings-page .settings-body>details summary,.admin-heading p,.sqm-heading p,.domain-ranking>p,.portal-guide p,.portal-guide li,.portal-guide summary,.theme-login,.theme-mobile) { color: var(--terminal-muted); }
+html[data-theme=hacker] :is(.admin-field,.limit-field,.profile-name label,.device-mac,.sqm-field,.sqm-toggle,.domain-watch label,.domain-detail-grid li span:last-child,.client-last-dns time) { color: var(--terminal-text); }
+html[data-theme=hacker] input:not([type=checkbox]):not([type=radio]),
+html[data-theme=hacker] select,
+html[data-theme=hacker] textarea {
+  background: #08110c;
+  border-color: #3b5e48;
+  border-radius: 3px;
+  color: #d5e8dc;
+  font-family: var(--terminal-font);
+  caret-color: var(--terminal-accent);
+}
+html[data-theme=hacker] input::placeholder { color: #90ae9b; opacity: 1; }
+html[data-theme=hacker] :is(input[type=checkbox],input[type=radio]) { accent-color: var(--terminal-accent); }
+html[data-theme=hacker] :is(input,select,textarea,summary,.btn):focus-visible { outline-color: var(--terminal-accent); }
+html[data-theme=hacker] .btn {
+  --btn-bg: #102017;
+  --btn-fg: #c5e6d2;
+  --btn-border: #3b5e48;
+  --btn-hover-bg: #1b3225;
+  --btn-hover-border: #619b77;
+  border-radius: 3px;
+  box-shadow: none;
+}
+html[data-theme=hacker] .btn-primary {
+  --btn-bg: #85e9a7;
+  --btn-fg: #07160c;
+  --btn-border: #85e9a7;
+  --btn-hover-bg: #a0f1bc;
+  --btn-hover-border: #a0f1bc;
+}
+html[data-theme=hacker] .btn-info {
+  --btn-bg: #102c30;
+  --btn-fg: #79dce0;
+  --btn-border: #397078;
+  --btn-hover-bg: #183e43;
+  --btn-hover-border: #59a8ae;
+}
+html[data-theme=hacker] .btn-ghost {
+  --btn-bg: transparent;
+  --btn-fg: #a0bcaa;
+  --btn-border: transparent;
+  --btn-hover-bg: #1b3225;
+  --btn-hover-border: transparent;
+}
+html[data-theme=hacker] .btn-danger {
+  --btn-bg: #271716;
+  --btn-fg: #ffa8a1;
+  --btn-border: #7c4440;
+  --btn-hover-bg: #3b2220;
+  --btn-hover-border: #b26961;
+}
+html[data-theme=hacker] .btn-danger.btn-ghost { --btn-bg: transparent; --btn-border: transparent; --btn-hover-border: transparent; }
+html[data-theme=hacker] .btn-warning {
+  --btn-bg: #292213;
+  --btn-fg: #efc77e;
+  --btn-border: #71603a;
+  --btn-hover-bg: #3a301b;
+  --btn-hover-border: #a68c52;
+}
+html[data-theme=hacker] .btn-link { --btn-bg: transparent; --btn-border: transparent; --btn-hover-bg: transparent; --btn-hover-border: transparent; --btn-fg: var(--terminal-cyan); }
+html[data-theme=hacker] .btn:disabled { border-color: #2a4032; background: #17231b; color: #7e9d89; }
+html[data-theme=hacker] input::file-selector-button { border-color: #3b5e48; border-radius: 3px; background: #102017; color: #c5e6d2; }
+html[data-theme=hacker] input::file-selector-button:hover { background: #1b3225; }
+html[data-theme=hacker] .site-header { background: #08110c; border-bottom: 1px solid #2b4c38; box-shadow: none; }
+html[data-theme=hacker] .brand-mark { color: var(--terminal-accent); border-color: #2b4c38; background: transparent; border-radius: 3px; }
+html[data-theme=hacker] .brand h1 { color: var(--terminal-accent); }
+html[data-theme=hacker] .brand h1 span { color: var(--terminal-muted); }
+html[data-theme=hacker] .nav-shell { background: #0d1711; border-color: #2b4c38; }
+html[data-theme=hacker] .nav-divider { background: #2b4c38; }
+html[data-theme=hacker] .main-nav .btn-nav { --btn-bg: transparent; --btn-fg: #a0bcaa; --btn-border: transparent; font-size: 12px; padding-inline: 10px; }
+html[data-theme=hacker] .main-nav .btn-nav.active { --btn-bg: #183023; --btn-fg: #9af2b8; --btn-hover-bg: #203d2d; box-shadow: inset 0 -2px 0 #85e9a7; }
+html[data-theme=hacker] .nav-toggle { border-color: #2b4c38; }
+html[data-theme=hacker] .theme-mobile,
+html[data-theme=hacker] .theme-login { border-color: #2b4c38; }
+html[data-theme=hacker] .metric { background: #0a130e; border-color: #2b4c38; border-radius: 3px; }
+html[data-theme=hacker] .metric-value { color: var(--terminal-accent); font-size: 24px; letter-spacing: -1px; }
+html[data-theme=hacker] :is(#trafficChart,#clientTrafficChart) { background: #08110c; border-color: #2b4c38; border-radius: 4px; }
+html[data-theme=hacker] :is(.domain-ranking,.settings-section,.domain-detail-grid li,.client-last-dns li) { border-color: #2b4c38; }
+html[data-theme=hacker] .domain-watch { background: #0a130e; border-color: #2b4c38; border-radius: 3px; }
+html[data-theme=hacker] .domain-watch-dialog .domain-watch { background: transparent; border: 0; border-radius: 0; }
+html[data-theme=hacker] .domain-watch li { background: #173222; color: #c5e6d2; }
+html[data-theme=hacker] :is(td,th) { border-color: #2b4c38; }
+html[data-theme=hacker] :is(.domain-table th,.limit-table-wrap th,.client-table-wrap th) { background: #172a1e; color: #c5e6d2; }
+html[data-theme=hacker] .limit-table-wrap td:first-child,
+html[data-theme=hacker] .client-last-dns a { color: var(--terminal-cyan); }
+html[data-theme=hacker] .client-table-wrap tbody tr { --row-bg: #0d1711; --dock-bg: #183023; }
+html[data-theme=hacker] .client-table-wrap tbody tr:nth-child(even) { --row-bg: #102017; --dock-bg: #1d3829; }
+html[data-theme=hacker] .client-table-wrap tbody tr:hover { --row-bg: #183023; --dock-bg: #254533; }
+html[data-theme=hacker] .client-table-wrap :is(td,th) { border-bottom-color: #2b4c38; }
+html[data-theme=hacker] .client-table-wrap table :is(.client-rate-down,.client-rate-up,.client-actions) { color: #d5e8dc; }
+html[data-theme=hacker] .client-table-wrap table th:is(.client-rate-down,.client-rate-up,.client-actions) { background: #203d2d; }
+html[data-theme=hacker] .client-table-wrap tr.offline td:not(.client-actions),
+html[data-theme=hacker] .client-table-wrap tr.offline .domain-row-button,
+html[data-theme=hacker] .wan-usage .wan-month { color: #a0bcaa; }
+html[data-theme=hacker] .client-panbar { background: #0d1711; border-color: #3b5e48; box-shadow: none; }
+html[data-theme=hacker] .domain-detail { background: #0d1711; color: #d5e8dc; border-color: #3b5e48; border-radius: 4px; box-shadow: 0 16px 60px #0008; }
+html[data-theme=hacker] .domain-detail::backdrop { background: #020704bf; }
+html[data-theme=hacker] :is(.admin-output,.sqm-output,.portal-guide pre,.portal-guide textarea) { background: #060e09; color: #b9e8cb; border-color: #3b5e48; border-radius: 3px; }
+html[data-theme=hacker] .config-editor { color: #b9e8cb; }
+html[data-theme=hacker] .admin-badge { background: #172a1e; color: #c5e6d2; border-color: #3b5e48; }
+html[data-theme=hacker] .admin-badge[data-state=ready] { background: #143522; color: #9af2b8; border-color: #397d52; }
+html[data-theme=hacker] .admin-badge[data-state=attention] { background: #292213; color: #efc77e; border-color: #71603a; }
+html[data-theme=hacker] .settings-options .choice-title { color: #d5e8dc; }
+html[data-theme=hacker] .settings-options .mode-choice:has(input:checked) .choice-title { color: var(--terminal-accent); }
+html[data-theme=hacker] .card .error { color: #ffa8a1; }
+@media (max-width: 900px) {
+  html[data-theme=hacker] .client-table-wrap table th.client-actions { background: #172a1e; }
+  html[data-theme=hacker] .client-table-wrap table td.client-actions button.client-actions-more,
+  html[data-theme=hacker] .client-actions-glyph { color: #a0bcaa; }
+  html[data-theme=hacker] .client-actions-dialog { border-radius: 8px 8px 0 0; }
+}
+@media (max-width: 599px) {
+  html[data-theme=hacker] .brand h1 { font-size: 16px; }
+  html[data-theme=hacker] .brand { gap: 6px; }
+  html[data-theme=hacker] .main-nav .btn-nav { padding-inline: 6px; font-size: 11px; }
+  html[data-theme=hacker] .metric-value { font-size: 22px; }
+}
