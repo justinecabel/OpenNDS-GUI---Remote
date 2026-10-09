@@ -60,4 +60,27 @@ const reply=(at,generation='server')=>({ok:true,history:[{at,download:42,upload:
   f.context.delta.reset=true;
   assert.deepEqual(Array.from(f.run('mergeHistory(previous,delta)'),p=>p.at),[180,182]);
   console.log('PASS: merge replaces boundary values, prunes old seconds, and honors reset/gaps');
+
+
+  const resetSource=full.slice(full.indexOf('async function resetDomainWatchlist('),full.indexOf('async function addDomainWatch('));
+  const requests=[],controls=[],note={textContent:''};let reloads=0;
+  const context={busy:false,domainWatchLoaded:true,domainsPromise:null,domainsLoadedAt:123,
+    domainWatched:['example.com'],$:()=>note,domainWatchControls:value=>controls.push(value),
+    renderDomainWatchlist:()=>{},loadDomainRanking:async()=>{reloads++;},
+    api:(url,options)=>new Promise(resolve=>requests.push({url,options,resolve}))};
+  vm.createContext(context);vm.runInContext(resetSource,context);
+  const reset=vm.runInContext('resetDomainWatchlist()',context);
+  const repeated=vm.runInContext('resetDomainWatchlist()',context);
+  await Promise.resolve();
+  assert.equal(requests.length,1,'reset must serialize against other actions');
+  assert.equal(requests[0].url,'/api/domains/reset');assert.equal(requests[0].options.method,'POST');
+  requests[0].resolve({ok:true,watched:['example.com']});
+  assert.equal(await reset,true);assert.equal(await repeated,false);
+  assert.equal(note.textContent,'Counts cleared');assert.equal(reloads,1);
+  assert.deepEqual(controls,[true,false]);assert.equal(context.busy,false);
+  const failed=vm.runInContext('resetDomainWatchlist()',context);await Promise.resolve();
+  requests[1].resolve({ok:false,output:'DNS reset failed: router unavailable'});
+  assert.equal(await failed,false);assert.match(note.textContent,/router unavailable/);
+  assert.equal(reloads,1,'failed reset must retain the displayed data');assert.equal(context.busy,false);
+  console.log('PASS: watchlist reset serializes actions, refreshes counts, and recovers from failures');
 })().catch(error=>{console.error(error);process.exitCode=1;});

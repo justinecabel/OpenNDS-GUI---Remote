@@ -52,7 +52,7 @@ class OptimizationTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         for name in ('MODE_FILE', 'LIMITS_FILE', 'APPLIED_FILE', 'SESSION_REFRESH_FILE', 'BLOCK_FILE', 'PUNISH_FILE',
                      'PUNISH_TC_FILE', 'THROTTLE_FILE', 'WAN_USAGE_FILE', 'WAN_TRAFFIC_FILE', 'TRAFFIC_FILE',
-                     'CLIENT_WAN_HISTORY_FILE', 'DOMAIN_RANK_FILE', 'FAS_KEY_FILE'):
+                     'CLIENT_WAN_HISTORY_FILE', 'DOMAIN_RANK_FILE', 'FAS_KEY_FILE', 'SEEN_FILE', 'CLIENT_NAMES_FILE'):
             self.patch(name, str(Path(self.tmp.name) / (name + '.json')))
         for name, value in {'_wan_usage_data': None, '_wan_usage_live': {}, '_client_wan_history_data': None,
                             '_client_wan_live_history': {}, '_traffic_data': None, '_wan_traffic_data': None,
@@ -499,6 +499,93 @@ class OptimizationTests(unittest.TestCase):
         self.assertFalse(app._reconcile_sqm_conditional(force=True)[0])
         self.assertEqual(rates.call_count, 1)
         self.assertEqual(saved.call_args[0][0]['error'], 'still incomplete')
+
+    def test_watchlist_resolves_saved_names_and_legacy_counts_without_router_reads(self):
+        self.state('SEEN_FILE', {MAC: {'ip': '192.168.1.99', 'hostname': 'router-name'}})
+        self.state('CLIENT_NAMES_FILE', {MAC: 'Saved name'})
+        counts = {'example.com': {'total': 10, 'subdomains': {'example.com': 10},
+                                 'clients': {MAC: 1, '192.168.1.99': 2, 'router-name': 3,
+                                             'fd00::99': 4}}}
+        self.state('DOMAIN_RANK_FILE', {'watched': ['example.com'], 'pending': counts,
+                                       'client_addresses': {'fd00::99': MAC}})
+        def rows():
+            response = self.client.get('/api/domains', headers=self.headers)
+            self.assertEqual(response.status_code, 200)
+            domain = response.get_json()['domains'][0]
+            self.assertEqual(domain['queries'], 10)
+            return domain['clients']
+        self.assertEqual(rows(), [{'name': 'Saved name', 'queries': 10}])
+        response = self.client.put('/api/clients/name', headers=self.headers,
+                                   json={'mac': MAC, 'name': 'Renamed'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(rows(), [{'name': 'Renamed', 'queries': 10}])
+        self.client.put('/api/clients/name', headers=self.headers, json={'mac': MAC, 'name': ''})
+        self.assertEqual(rows(), [{'name': 'router-name', 'queries': 10}])
+        self.assertEqual(app._load_domain_rank_state()['pending'], counts)
+        self.assertEqual(self.commands, [])
+
+    def test_dns_counts_use_mac_for_static_ipv4_and_ipv6_clients(self):
+        self.state('SEEN_FILE', {MAC: {'ip': '192.168.1.99', 'hostname': 'history-name'}})
+        output = (f'0 {SECOND} 192.168.1.98 leased-name *\n@@NEIGH\n'
+                  f'192.168.1.99 dev br-lan lladdr {MAC} REACHABLE\n'
+                  f'fd00::99 dev br-lan lladdr {MAC} STALE\n').encode()
+        self.patch('ssh', Mock(return_value=(0, output, '')))
+        clients = app._dns_clients()
+        self.assertEqual(clients['192.168.1.99']['hostname'], 'history-name')
+        self.assertEqual(clients['192.168.1.98']['hostname'], 'leased-name')
+        log = '\n'.join(f'query[A] example.com from {ip}' for ip in
+                        ('192.168.1.99', 'fd00::99', '192.168.1.98', '192.168.1.77'))
+        self.assertEqual(app._domain_counts(log, clients, ['example.com'])['example.com']['clients'],
+                         {MAC: 2, SECOND: 1, '192.168.1.77': 1})
+        self.assertEqual(set(app._last_dns_queries(log, clients, 100)), {MAC, SECOND})
+
+    def test_watchlist_keeps_unknown_and_ambiguous_legacy_names(self):
+        self.state('SEEN_FILE', {MAC: {'ip': '192.168.1.99', 'hostname': 'shared'},
+                                 SECOND: {'ip': '192.168.1.98', 'hostname': 'shared'}})
+        self.state('CLIENT_NAMES_FILE', {MAC: 'First', SECOND: 'Second'})
+        self.state('DOMAIN_RANK_FILE', {'pending': {'example.com': {
+            'total': 6, 'subdomains': {}, 'clients': {'shared': 1, '192.168.1.77': 2, MAC: 3}}}})
+        self.assertEqual(app._domain_ranking_for_ui()['domains'][0]['clients'],
+                         [{'name': 'First', 'queries': 3}, {'name': '192.168.1.77', 'queries': 2},
+                          {'name': 'shared', 'queries': 1}])
+
+    def test_watchlist_reset_keeps_domains_and_skips_old_logged_queries(self):
+        now = int(time.time())
+        details = {'example.com': {'total': 3, 'subdomains': {'example.com': 3}, 'clients': {MAC: 3}}}
+        self.state('DOMAIN_RANK_FILE', {'watched': ['example.com'], 'pending': details,
+            'buckets': [{'at': now, 'domains': details}], 'offset': 12,
+            'last_clients': {MAC: [{'domain': 'other.example', 'at': now}]},
+            'client_addresses': {'192.168.1.99': MAC}})
+        self.patch('ssh', Mock(return_value=(0, b'1234\n', '')))
+        response = self.client.post('/api/domains/reset', headers=self.headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['watched'], ['example.com'])
+        self.assertEqual(response.get_json()['domains'], [])
+        state = app._load_domain_rank_state()
+        self.assertEqual(state['offset'], 1234)
+        self.assertEqual(state['last_clients'][MAC][0]['domain'], 'other.example')
+        self.assertEqual(state['client_addresses'], {'192.168.1.99': MAC})
+        read_log = self.patch('_read_domain_log', Mock(return_value=(now, (1280,
+            'query[A] example.com from 192.168.1.99'), '')))
+        self.patch('_ensure_domain_logging', Mock(return_value=(True, '')))
+        self.patch('_dns_clients', Mock(return_value={'192.168.1.99': {'mac': MAC}}))
+        app._collect_domain_ranking()
+        read_log.assert_called_once_with(1234)
+        self.assertEqual(app._domain_ranking_for_ui()['domains'][0]['queries'], 1)
+
+    def test_watchlist_reset_failure_preserves_counts_and_requires_auth(self):
+        saved = {'watched': ['example.com'], 'pending': {'example.com': {
+            'total': 3, 'subdomains': {}, 'clients': {MAC: 3}}}, 'offset': 12}
+        self.state('DOMAIN_RANK_FILE', saved)
+        ssh = self.patch('ssh', Mock(return_value=(1, b'', 'router unavailable')))
+        self.assertEqual(self.client.post('/api/domains/reset').status_code, 401)
+        ssh.assert_not_called()
+        for result in ((1, b'', 'router unavailable'), (0, b'invalid', ''), (0, b'-1', '')):
+            ssh.return_value = result
+            response = self.client.post('/api/domains/reset', headers=self.headers)
+            self.assertEqual(response.status_code, 502)
+            self.assertFalse(response.get_json()['ok'])
+            self.assertEqual(app._load_json(app.DOMAIN_RANK_FILE, {}), saved)
 
     def test_dns_refresh_is_coalesced_across_tabs(self):
         collector = self.patch('_collect_domain_ranking', Mock())

@@ -1,8 +1,10 @@
 /* DNS ranking uses the page width; watchlist controls live in a dialog. */
 #overview .domain-ranking { grid-template-columns: minmax(0,1fr); }
-#overview .domain-ranking > :is(.domain-ranking-heading,.domain-table-wrap,#domain_note) { grid-column: 1; grid-row: auto; }
-.domain-ranking-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#overview .domain-ranking > :is(.domain-ranking-heading,.domain-table-wrap,#domain_note,#domain_reset_out) { grid-column: 1; grid-row: auto; }
+.domain-ranking-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .domain-ranking-heading .btn { flex: 0 0 auto; }
+.domain-ranking-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+#domain_reset_out:empty { display: none; }
 .domain-watch-dialog { width: min(560px,calc(100vw - 32px)); }
 .domain-watch-dialog .domain-watch { padding: 0; border: 0; border-radius: 0; background: transparent; }
 .domain-watch-dialog .domain-watch ul { display: flex; flex-direction: column; flex-wrap: nowrap; max-height: min(50dvh,420px); overflow-y: auto; }

@@ -3326,6 +3326,9 @@ def _load_domain_rank_state():
             "buckets": buckets, "pending": _clean_domain_details(raw.get("pending")),
             "watched": watched, "logging_active": raw.get("logging_active", True) is True,
             "last_clients": last_clients,
+            "client_addresses": {address: mac.lower() for address, mac in
+                                 (raw.get("client_addresses") or {}).items()
+                                 if isinstance(mac, str) and MAC_RE.fullmatch(mac)},
             "error": raw.get("error", "") if isinstance(raw.get("error"), str) else ""}
 
 
@@ -3362,15 +3365,38 @@ def _read_domain_log(offset):
 
 
 def _dns_clients():
-    rc, out, _ = ssh("cat /tmp/dhcp.leases 2>/dev/null || true")
+    # History covers static-address clients and leases with no current hostname.
+    with _history_lock:
+        seen = _load_seen()
+    by_mac = {mac: {"mac": mac, "hostname": value.get("hostname", "")}
+              for mac, value in seen.items()}
+    clients = {value["ip"]: by_mac[mac] for mac, value in seen.items() if value.get("ip")}
+    rc, out, _ = ssh("cat /tmp/dhcp.leases 2>/dev/null; printf '\n@@NEIGH\n'; "
+                     "ip neigh show 2>/dev/null; ip -6 neigh show 2>/dev/null; true")
     if rc != 0:
-        return {}
-    clients = {}
-    for line in out.decode(errors="replace").splitlines():
+        return clients
+    leases, _, neighbours = out.decode(errors="replace").partition("@@NEIGH")
+    for line in leases.splitlines():
         fields = line.split()
-        if len(fields) >= 4:
-            clients[fields[2]] = {"mac": fields[1].lower(),
-                                  "hostname": fields[3] if fields[3] != "*" else fields[2]}
+        if len(fields) >= 4 and MAC_RE.fullmatch(fields[1]):
+            mac = fields[1].lower()
+            by_mac[mac] = {"mac": mac, "hostname": fields[3] if fields[3] != "*"
+                          else by_mac.get(mac, {}).get("hostname", "")}
+            clients[fields[2]] = by_mac[mac]
+    # IPv6 DNS requests and static IPv4 clients can be identified by neighbours.
+    for line in neighbours.splitlines():
+        fields = line.split()
+        if "lladdr" not in fields:
+            continue
+        index = fields.index("lladdr") + 1
+        if index >= len(fields) or not MAC_RE.fullmatch(fields[index]):
+            continue
+        try:
+            address = str(ipaddress.ip_address(fields[0]))
+        except ValueError:
+            continue
+        mac = fields[index].lower()
+        clients[address] = by_mac.get(mac, {"mac": mac, "hostname": ""})
     return clients
 
 
@@ -3394,8 +3420,9 @@ def _domain_counts(log_text, clients, watched):
         record = counts.setdefault(watched_domain, {"total": 0, "subdomains": {}, "clients": {}})
         record["total"] += 1
         record["subdomains"][domain] = record["subdomains"].get(domain, 0) + 1
-        hostname = clients.get(str(source), {}).get("hostname", str(source))
-        record["clients"][hostname] = record["clients"].get(hostname, 0) + 1
+        mac = clients.get(str(source), {}).get("mac", "")
+        identity = mac.lower() if MAC_RE.fullmatch(mac) else str(source)
+        record["clients"][identity] = record["clients"].get(identity, 0) + 1
     return counts
 
 
@@ -3455,6 +3482,7 @@ def _collect_domain_ranking():
             return
         offset, log_text = result
         clients = _dns_clients()
+        state["client_addresses"] = {address: client["mac"] for address, client in clients.items()}
         _merge_domain_details(state["pending"], _domain_counts(log_text, clients, state["watched"]))
         _merge_last_dns(state["last_clients"], _last_dns_queries(log_text, clients, at))
         state["last_clients"] = {mac: [item for item in items if item["at"] >= at - LAST_DNS_RETENTION_SECS]
@@ -3474,6 +3502,25 @@ def _collect_domain_ranking():
         _save_json(DOMAIN_RANK_FILE, state)
 
 
+def _domain_client_labels(addresses):
+    """Resolve current names locally, including older hostname/IP count keys."""
+    with _history_lock:
+        seen, names = _load_seen(), _load_client_names()
+    labels = dict(names)
+    aliases = {}
+    known_addresses = {value["ip"]: mac for mac, value in seen.items() if value.get("ip")}
+    known_addresses.update(addresses)
+    for mac, value in seen.items():
+        labels.setdefault(mac, value.get("hostname") or value.get("ip") or mac)
+        if value.get("hostname"):
+            aliases.setdefault(value["hostname"], set()).add(mac)
+    for address, mac in known_addresses.items():
+        labels.setdefault(mac, address)
+        aliases[address] = {mac}
+    # A shared legacy hostname cannot be assigned to a single device reliably.
+    return labels, {alias: next(iter(macs)) for alias, macs in aliases.items() if len(macs) == 1}
+
+
 def _domain_ranking_for_ui():
     with _domain_rank_lock:
         state = _load_domain_rank_state()
@@ -3483,13 +3530,19 @@ def _domain_ranking_for_ui():
         if bucket["at"] >= cutoff:
             _merge_domain_details(totals, bucket["domains"])
     _merge_domain_details(totals, state["pending"])
+    labels, aliases = _domain_client_labels(state["client_addresses"])
     rows = []
     for domain, values in sorted(totals.items(), key=lambda item: (-item[1]["total"], item[0])):
+        client_counts = {}
+        for identity, count in values["clients"].items():
+            mac = identity.lower() if MAC_RE.fullmatch(identity) else aliases.get(identity)
+            name = labels.get(mac, identity)
+            client_counts[name] = client_counts.get(name, 0) + count
         rows.append({"domain": domain, "queries": values["total"],
                      "subdomains": [{"name": name, "queries": count} for name, count in
                                     sorted(values["subdomains"].items(), key=lambda item: (-item[1], item[0]))[:DOMAIN_DETAIL_LIMIT]],
                      "clients": [{"name": name, "queries": count} for name, count in
-                                 sorted(values["clients"].items(), key=lambda item: (-item[1], item[0]))[:DOMAIN_DETAIL_LIMIT]]})
+                                 sorted(client_counts.items(), key=lambda item: (-item[1], item[0]))[:DOMAIN_DETAIL_LIMIT]]})
     return {"domains": rows, "watched": state["watched"],
             "refreshed_at": state["refreshed_at"], "error": state["error"]}
 
@@ -3633,6 +3686,28 @@ def overview_history():
 @app.route("/api/domains")
 @requires_auth
 def domains():
+    return jsonify(ok=True, **_domain_ranking_for_ui())
+
+
+@app.route("/api/domains/reset", methods=["POST"])
+@requires_auth
+def reset_domain_counts():
+    with _domain_rank_lock:
+        # Skip already logged queries so the next collection cannot replay them.
+        rc, out, err = ssh(f"wc -c < {shlex.quote(DOMAIN_LOG_FILE)}")
+        try:
+            offset = int(out.strip()) if rc == 0 else -1
+        except ValueError:
+            offset = -1
+        if offset < 0:
+            return jsonify(ok=False, output="DNS reset failed: " +
+                           (err.strip() or "could not read DNS log position")), 502
+        state = _load_domain_rank_state()
+        now = int(time.time())
+        state.update({"buckets": [], "pending": {}, "offset": offset,
+                      "refreshed_at": now, "next_refresh_at": now + int(DOMAIN_REFRESH_INTERVAL),
+                      "error": ""})
+        _save_json(DOMAIN_RANK_FILE, state)
     return jsonify(ok=True, **_domain_ranking_for_ui())
 
 
