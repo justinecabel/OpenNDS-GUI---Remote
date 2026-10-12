@@ -4,6 +4,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssh-client 
 WORKDIR /app
 RUN pip install --no-cache-dir flask gunicorn
 COPY app.py .
+COPY network_policy.py .
+COPY wan_shaping.py .
+COPY router router
 COPY templates templates
 COPY static static
 COPY portal /portal-default

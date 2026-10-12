@@ -13,13 +13,11 @@ services:
       OWRT_USER: root
       OWRT_KEY: /ssh/id_ed25519
       WAN_IFACE: eth0
+      NETWORKS_FILE: /data/networks.json
       WAN_COUNTER_REMOTE: /etc/opennds-manager/wan-counter.state
       WAN_TRAFFIC_FILE: /data/wan-traffic.json
       WAN_USAGE_INTERVAL: 1
       WAN_USAGE_MAX_GAP: 8
-      DOMAIN_RANK_FILE: /data/domain-rank.json
-      DOMAIN_LOG_FILE: /tmp/opennds-dns-queries.log
-      DOMAIN_REFRESH_INTERVAL: 1800
       CLIENTS_CACHE_SECS: 0.75
       NDS_CONF: /etc/config/opennds
       PORTAL_DIR: /etc/opennds/htdocs

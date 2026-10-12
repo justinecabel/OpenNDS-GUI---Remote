@@ -3,6 +3,10 @@
 **
 !Dockerfile
 !app.py
+!network_policy.py
+!wan_shaping.py
+!router/
+!router/**
 !templates/
 !templates/**
 !static/

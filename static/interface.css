@@ -1,0 +1,219 @@
+/* Shared visual system. Layout and router controls remain in their components. */
+.qos-status-card { margin-bottom: 12px; }
+.qos-status-list { display: grid; gap: 8px; }
+.qos-status-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 12px; align-items: center; }
+.qos-status-row strong,.qos-status-row small { display: block; overflow-wrap: anywhere; }
+.qos-status-row small { color: var(--ui-muted); }
+.qos-status-message { grid-column: 1 / -1; }
+.qos-status-state { padding: 3px 7px; border-radius: 5px; background: var(--ui-soft); color: var(--ui-muted); font-size: 12px; }
+.qos-status-state:is([data-state=active],[data-state=ready]) { background: var(--ui-good-soft); color: var(--ui-good); }
+.qos-status-state[data-state=pending] { background: var(--ui-warning-soft); color: var(--ui-warning); }
+.qos-status-state[data-state=error] { background: var(--ui-danger-soft); color: var(--ui-danger); }
+:root {
+  --ui-bg: #f5f6f8;
+  --ui-surface: #fff;
+  --ui-soft: #f8fafb;
+  --ui-hover: #f0f5f8;
+  --ui-border: #e0e5eb;
+  --ui-text: #223342;
+  --ui-muted: #5d6d7b;
+  --ui-accent: #25618a;
+  --ui-accent-soft: #e9f2f9;
+  --ui-good: #20734b;
+  --ui-good-soft: #eaf6ee;
+  --ui-warning: #865519;
+  --ui-warning-soft: #fff4e1;
+  --ui-danger: #a63446;
+  --ui-danger-soft: #fff0f2;
+}
+:root[data-theme=hacker] {
+  --ui-bg: #0b120f;
+  --ui-surface: #111d17;
+  --ui-soft: #15241c;
+  --ui-hover: #1b3024;
+  --ui-border: #2b4134;
+  --ui-text: #dcebe1;
+  --ui-muted: #a0b9a9;
+  --ui-accent: #94e8b1;
+  --ui-accent-soft: #203b2b;
+  --ui-good: #94e8b1;
+  --ui-good-soft: #203b2b;
+  --ui-warning: #f2c681;
+  --ui-warning-soft: #352b1e;
+  --ui-danger: #ffadbb;
+  --ui-danger-soft: #39232b;
+}
+html[data-theme] :is(.manager-app,.manager-login) {
+  background: var(--ui-bg);
+  background-image: none;
+  color: var(--ui-text);
+}
+html[data-theme] .manager-app > main { padding-block: 24px; }
+html[data-theme] .manager-app main > section {
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  background: var(--ui-surface);
+  padding: 20px;
+  box-shadow: none;
+}
+html[data-theme] .manager-app main > .settings-page {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+html[data-theme] .manager-app :is(h2,h3,h4,.setting-label) { color: var(--ui-text); }
+html[data-theme] .manager-app :is(.hint,.admin-heading p,.sqm-heading p,.admin-note,.sqm-note,.client-note,.client-results,.sqm-direction,.sqm-unit,.setting-readout > span:first-child) { color: var(--ui-muted); }
+html[data-theme] .manager-app :is(.admin-heading,.sqm-heading) { margin-bottom: 20px; }
+html[data-theme] .manager-app .settings-layout { display: grid; gap: 12px; }
+html[data-theme] .manager-app .settings-section {
+  padding: 16px;
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  background: var(--ui-surface);
+  gap: 8px;
+}
+html[data-theme] .manager-app #mode > .settings-section { border: 1px solid var(--ui-border); padding: 16px; }
+html[data-theme] .manager-app .settings-heading { padding: 0; border: 0; }
+html[data-theme] .manager-app .settings-heading .hint { margin-top: 4px; }
+html[data-theme] .manager-app .settings-heading h3 { color: var(--ui-accent); font-size: 14px; font-weight: 600; }
+html[data-theme] .manager-app .settings-page .setting-label { color: var(--ui-muted); }
+html[data-theme] .manager-app .settings-page :is(.admin-heading,.sqm-heading) { margin-bottom: 20px; }
+html[data-theme] .manager-app .settings-page h2 { font-size: 18px; }
+html[data-theme] .manager-app .settings-body > :is(.admin-note,.sqm-note) { margin-top: 10px; }
+html[data-theme] .manager-app :is(input:not([type=checkbox],[type=radio],[type=hidden]),select,textarea),
+html[data-theme] .manager-login :is(input:not([type=hidden]),select) {
+  border: 1px solid var(--ui-border);
+  border-radius: 7px;
+  background: var(--ui-soft);
+  color: var(--ui-text);
+}
+html[data-theme] .manager-app input::placeholder { color: var(--ui-muted); opacity: 1; }
+html[data-theme] .manager-app :is(input,select,textarea):focus-visible,
+html[data-theme] .manager-login :is(input,select):focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+html[data-theme] .manager-app .settings-page :is(.admin-field,.limit-field,.sqm-field,.profile-name label,.device-mac):has(>input,>select) { padding-block: 6px; }
+html[data-theme] .manager-app .settings-page :is(.admin-actions,.sqm-actions,.limit-toolbar) { margin-top: 8px; padding-top: 0; border: 0; }
+html[data-theme] .manager-app .settings-body > .admin-actions:first-child { border-top: 0; padding-top: 0; }
+html[data-theme] .manager-app :is(.btn,.theme-control select,.brand-mark) { border-radius: 7px; }
+html[data-theme] .manager-app .settings-page :is(.btn,input,select,textarea) { border-radius: 4px; }
+html[data-theme] .manager-app .settings-page .btn { font-weight: 500; box-shadow: none; }
+html[data-theme] .manager-app .settings-page :is(input:not([type=checkbox],[type=radio]),select) { background: var(--ui-surface); }
+.network-identity-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.network-identity-heading strong { min-width: 0; overflow-wrap: anywhere; }
+.network-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+html[data-theme] .manager-app .network-title strong { color: var(--ui-text); font-size: var(--text-subheading); font-weight: 600; }
+.network-primary { color: var(--ui-muted); font-size: var(--text-small); font-weight: 400; }
+.network-health { flex-shrink: 0; padding: 2px 7px; border-radius: 5px; font-size: var(--text-small); color: var(--ui-danger); background: var(--ui-danger-soft); }
+.network-health[data-state=up] { color: var(--ui-good); background: var(--ui-good-soft); }
+#mode .network-row { grid-template-columns: minmax(0,1fr) auto minmax(0,300px); align-items: center; }
+#mode .network-identity { grid-column: 1; grid-row: 1; }
+#mode .network-health { grid-column: 2; grid-row: 1; justify-self: end; }
+#mode :is(.network-behavior,.network-status) { grid-column: 3; grid-row: 1; }
+@media (max-width: 600px) {
+  #mode .network-row { grid-template-columns: minmax(0,1fr) auto; gap: 8px 12px; }
+  #mode :is(.network-behavior,.network-status) { grid-column: 1/-1; grid-row: 2; }
+}
+html[data-theme] .manager-app .network-identity .network-meta { color: var(--ui-muted); font-family: var(--font-mono); font-weight: 400; overflow-wrap: anywhere; }
+html[data-theme] .manager-app .network-identity .network-reason { color: var(--ui-warning); }
+.network-behavior { --network-mode-color: var(--ui-muted); --network-mode-bg: var(--ui-soft); }
+.network-behavior[data-mode=portal] { --network-mode-color: #12657f; --network-mode-bg: #eaf6fb; }
+html[data-theme=hacker] .network-behavior[data-mode=portal] { --network-mode-color: #8bd9ed; --network-mode-bg: #17313a; }
+.network-behavior[data-mode=auto_auth] { --network-mode-color: var(--ui-good); --network-mode-bg: var(--ui-good-soft); }
+.network-behavior[data-mode=auto_trust] { --network-mode-color: var(--ui-warning); --network-mode-bg: var(--ui-warning-soft); }
+html[data-theme] .manager-app #mode .network-behavior select { color: var(--network-mode-color); background: var(--network-mode-bg); border-left: 3px solid var(--network-mode-color); font-weight: 500; }
+html[data-theme] .manager-app #mode .network-behavior option { color: var(--ui-text); background: var(--ui-surface); }
+.network-hidden-control { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ui-muted); font-size: 12px; }
+.network-hidden-control input { margin: 0; }
+.network-row[hidden],.network-hidden-control[hidden],.network-visibility-action[hidden] { display: none; }
+.network-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#sqm_interface[hidden],#sqm_summary[hidden] { display: none; }
+.sqm-list-heading,.sqm-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sqm-editor-heading > div { min-width: 0; overflow-wrap: anywhere; }
+.sqm-editor-heading > button { flex-shrink: 0; }
+.sqm-interface-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+.sqm-add-dialog { max-width: 440px; }
+html[data-theme] .manager-app .sqm-add-dialog .sqm-field { display: flex; flex-direction: column; gap: 6px; }
+.sqm-add-dialog select { width: 100%; box-sizing: border-box; min-height: 38px; padding: 8px; }
+.sqm-add-dialog .hint { margin-block: 12px; }
+.sqm-add-dialog .sqm-actions { justify-content: flex-end; }
+@media (pointer: coarse) { .network-identity-heading .btn,.network-hidden-control { min-height: 44px; } }
+@media (pointer: coarse) { .sqm-interface-actions .btn,.sqm-add-dialog select { min-height: 44px; } }
+html[data-theme] .manager-app :is(.main-nav,.nav-shell) { background: var(--ui-surface); }
+html[data-theme] .manager-app .nav-shell { border-color: var(--ui-border); }
+html[data-theme] .manager-app .main-nav .btn-nav { color: var(--ui-muted); }
+html[data-theme] .manager-app .main-nav .btn-nav.active { color: var(--ui-accent); background: var(--ui-accent-soft); box-shadow: none; }
+html[data-theme] .manager-app .main-nav .btn-nav:hover { background: var(--ui-hover); }
+html[data-theme] .manager-app .nav-divider { background: var(--ui-border); }
+html[data-theme] .manager-app .metric { background: var(--ui-soft); border-color: var(--ui-border); border-radius: 8px; }
+html[data-theme] .manager-app :is(#trafficChart,#clientTrafficChart) { background: var(--ui-surface); border-color: var(--ui-border); }
+html[data-theme] .manager-app :is(.manager-dialog,.admin-output,.config-editor) { border-color: var(--ui-border); border-radius: 10px; }
+html[data-theme] .manager-app .manager-dialog { background: var(--ui-surface); color: var(--ui-text); padding: 20px; }
+html[data-theme] .manager-app .manager-dialog::backdrop { background: #07120d80; backdrop-filter: blur(2px); }
+html[data-theme] .manager-app .manager-dialog p { color: var(--ui-muted); }
+
+/* Devices stay in a table. Search and status filters work within the selected LAN. */
+html[data-theme] .manager-app .client-network-tabs { gap: 6px; padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--ui-border); }
+html[data-theme] .manager-app .client-network-tab { border-color: transparent; background: transparent; color: var(--ui-muted); box-shadow: none; }
+html[data-theme] .manager-app .client-network-tab[aria-selected=true] { background: var(--ui-accent-soft); color: var(--ui-accent); }
+html[data-theme] .manager-app .client-network-tab:hover { background: var(--ui-hover); }
+html[data-theme] .manager-app .client-network-tab small { font-weight: 400; }
+.client-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.client-search { flex: 1 1 240px; max-width: 360px; min-width: 0; }
+.client-search input { box-sizing: border-box; width: 100%; min-height: 36px; padding: 8px 12px; }
+.client-filters { display: flex; gap: 2px; padding: 3px; border-radius: 8px; background: var(--ui-soft); }
+html[data-theme] .manager-app .client-filters .btn { min-height: 28px; padding: 4px 12px; color: var(--ui-muted); font-size: 12px; font-weight: 500; }
+html[data-theme] .manager-app .client-filters .btn[aria-pressed=true] { background: var(--ui-surface); color: var(--ui-text); box-shadow: 0 1px 3px #00000012; }
+.client-results { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; }
+#clientsupdated[data-state=live]::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; background: var(--ui-good); vertical-align: 1px; }
+#clientsupdated[data-state=stale] { color: var(--ui-warning); }
+html[data-theme] .manager-app .client-table-wrap { border: 1px solid var(--ui-border); border-radius: 8px; }
+html[data-theme] .manager-app .client-table-wrap table th { background: var(--ui-soft); color: var(--ui-muted); padding-block: 10px; font-size: 12px; font-weight: 500; }
+html[data-theme] .manager-app .client-table-wrap :is(th,td) { border-bottom-color: var(--ui-border); }
+html[data-theme] .manager-app .client-table-wrap tbody tr { --row-bg: var(--ui-surface); --dock-bg: var(--ui-surface); }
+html[data-theme] .manager-app .client-table-wrap tbody tr:hover { --row-bg: var(--ui-hover); --dock-bg: var(--ui-hover); }
+html[data-theme] .manager-app .client-table-wrap tbody td { padding-block: 10px; color: var(--ui-text); font-variant-numeric: tabular-nums; }
+html[data-theme] .manager-app .client-table-wrap tbody tr:last-child td { border-bottom: 0; }
+html[data-theme] .manager-app .client-table-wrap table :is(.client-rate-down,.client-rate-up,.client-actions) { background: var(--dock-bg,var(--ui-soft)); border-left: 0; }
+html[data-theme] .manager-app .client-table-wrap table th:is(.client-rate-down,.client-rate-up,.client-actions) { background: var(--ui-soft); color: var(--ui-muted); }
+html[data-theme] .manager-app .client-table-wrap .client-rate-down { box-shadow: -5px 0 8px -7px #00000045; }
+html[data-theme] .manager-app .client-table-wrap td:is(:nth-child(3),:nth-child(4)) { font-family: var(--font-mono); font-size: 12px; }
+html[data-theme] .manager-app .client-table-wrap td:first-child { color: var(--ui-good); font-size: 12px; }
+html[data-theme] .manager-app .client-table-wrap tr.offline td:not(.client-actions),
+html[data-theme] .manager-app .client-table-wrap tr.offline .client-name-button,
+html[data-theme] .manager-app .wan-usage .wan-month { color: var(--ui-muted); }
+html[data-theme] .manager-app .client-name-button { color: var(--ui-accent); font-weight: 500; }
+html[data-theme] .manager-app .client-name-edit { font-weight: 400; color: var(--ui-muted); }
+.client-state { display: inline-block; padding: 3px 6px; border-radius: 5px; font-size: 10px; font-weight: 600; line-height: 1.4; letter-spacing: .2px; background: var(--ui-soft); color: var(--ui-muted); }
+.client-state[data-state=online],.client-state[data-state=trusted] { color: var(--ui-good); background: var(--ui-good-soft); }
+.client-state[data-state=limited] { color: var(--ui-warning); background: var(--ui-warning-soft); }
+.client-state[data-state=blocked] { color: var(--ui-danger); background: var(--ui-danger-soft); }
+
+/* Use the existing action dialog where inline controls would crowd the table. */
+@media (max-width: 1300px) {
+  html[data-theme] .manager-app .client-table-wrap table :is(.client-rate-down,.client-rate-up) { position: static; box-shadow: none; }
+  html[data-theme] .manager-app .client-table-wrap table .client-actions { box-sizing: border-box; width: 48px; min-width: 48px; max-width: 48px; padding: 6px; text-align: center; box-shadow: -3px 0 5px -4px #00000045; }
+  html[data-theme] .manager-app .client-table-wrap :is(.client-actions-label,.client-actions-inline) { display: none; }
+  html[data-theme] .manager-app .client-actions-glyph { display: inline-block; color: var(--ui-muted); }
+  html[data-theme] .manager-app .client-table-wrap table td.client-actions button.client-actions-more { display: inline-flex; width: 36px; min-height: 44px; margin: 0; padding: 0; color: var(--ui-muted); }
+}
+@media (max-width: 600px) {
+  html[data-theme] .manager-app > main { padding: 12px 8px; }
+  html[data-theme] .manager-app main > section { padding: 12px; border-radius: 9px; }
+  html[data-theme] .manager-app main > .settings-page { padding: 0; }
+  html[data-theme] .manager-app main > .settings-page { padding-inline: 8px; }
+  html[data-theme] .manager-app .settings-section,
+  html[data-theme] .manager-app #mode > .settings-section { padding: 12px; border-radius: 9px; }
+  html[data-theme] .manager-app .settings-page > :is(.admin-heading,.sqm-heading) { padding-inline: 0; }
+  html[data-theme] .manager-app .client-search { flex-basis: 100%; max-width: none; }
+  html[data-theme] .manager-app .client-search input { min-height: 44px; }
+  html[data-theme] .manager-app .client-filters .btn { min-height: 36px; }
+  html[data-theme] .manager-app .client-network-tab { min-height: 44px; }
+}
+@media (max-width: 900px) {
+  html[data-theme] .manager-app .client-actions-dialog { padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); border-radius: 14px 14px 0 0; }
+}
+@media (pointer: coarse) {
+  html[data-theme] .manager-app :is(.client-filters .btn,.client-search input) { min-height: 44px; }
+}
+html[data-theme] .manager-login .card { padding: 28px; background: var(--ui-surface); border-color: var(--ui-border); border-radius: 14px; box-shadow: 0 12px 48px #0000000d; }
+html[data-theme] .manager-login :is(h1,label) { color: var(--ui-text); }
+html[data-theme] .manager-login .theme-login { color: var(--ui-muted); border-color: var(--ui-border); }

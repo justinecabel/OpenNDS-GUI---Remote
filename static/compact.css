@@ -1,0 +1,92 @@
+/* Shared compact spacing for both manager themes and sign-in. */
+main:not(.card) { padding: 16px; }
+section { padding: 16px; }
+section > h2 { margin: 0 0 10px; }
+section > p { margin-block: 8px; }
+.header-row { gap: 12px; padding: 8px 16px; }
+.main-nav { gap: 2px; padding: 4px 16px; }
+.header-actions, .theme-control { gap: 6px; }
+.theme-control select { min-height: 32px; padding: 5px 8px; }
+.btn:not(.btn-link,.btn-sm,.btn-xs,.btn-icon) { min-height: 32px; padding: 5px 10px; gap: 6px; }
+.main-nav .btn-nav { min-height: 36px; }
+.logout-button, .nav-toggle { min-height: 36px; }
+.header-actions .logout-button { padding: 5px 8px; }
+section { scroll-margin-top: 120px; }
+
+.admin-heading, .sqm-heading { gap: 12px; margin-bottom: 12px; }
+.admin-heading h2, .sqm-heading h2 { margin-bottom: 4px; }
+.admin-fields, .sqm-fields, .profile-name, .limit-fields { gap: 8px; }
+.admin-field, .sqm-field, .limit-field { gap: 4px; }
+.admin-field :is(input,select), .sqm-field :is(input,select), .limit-field input,
+.profile-name :is(input,select), .device-mac input { padding: 6px 8px; }
+.settings-section { gap: 20px; padding-block: 16px; }
+.settings-heading .hint { margin-top: 4px; }
+.settings-page .profile-name { margin-bottom: 10px; }
+.settings-page .limit-fields { gap: 8px; }
+.settings-page :is(.admin-actions,.sqm-actions,.limit-toolbar) { margin-top: 10px; gap: 6px; }
+.settings-page :is(.admin-note,.sqm-note), .settings-page .portal-guide { margin-top: 10px; }
+.settings-page .settings-body > details { margin-top: 10px; }
+.settings-page details .hint { margin-block: 8px; }
+.sqm-toggle { gap: 6px; margin-bottom: 10px; }
+.sqm-summary-queue { gap: 8px; padding-block: 7px; }
+.sqm-summary-queue small { margin-block: 3px; }
+.sqm-summary-daily { gap: 4px; margin-top: 10px; }
+.sqm-summary-policy { gap: 4px; padding-block: 6px; }
+.network-row { gap: 12px; padding-block: 10px; }
+.network-identity small { margin-top: 4px; }
+.network-behavior select { min-height: 34px; padding: 6px 8px; }
+.settings-options .mode-choice { gap: 8px; padding-block: 8px; }
+.admin-result, .sqm-output, .admin-output { margin-top: 8px; }
+.admin-output, .config-editor { padding: 10px; }
+.admin-badge { padding: 3px 7px; }
+
+.overview-grid { gap: 8px; margin: 8px 0 12px; }
+.metric { padding: 10px; }
+.metric-value { margin-block: 3px; }
+.chart-heading { gap: 8px; }
+.chart-heading h3 { margin-block: 8px; }
+.traffic-legend { gap: 10px; }
+.client-network-tabs { gap: 6px; margin-bottom: 8px; }
+.client-network-tabs .client-network-tab { min-height: 34px; gap: 3px 8px; }
+.client-table-wrap .client-network-empty td { padding: 8px 6px; }
+.client-table-wrap table td.client-actions button { margin-block: 1px; }
+.client-note { margin-block: 6px; }
+
+.manager-dialog { padding: 12px; }
+.manager-dialog p { margin-bottom: 8px; }
+.dialog-heading{ gap: 8px; }
+.client-traffic-chart { margin: 6px 0 10px; }
+.client-actions-grid { gap: 8px; }
+.client-actions-grid .btn { min-height: 44px; }
+
+.card { padding: 20px; }
+.card form label { margin: 10px 0 4px; }
+.card input { padding: 8px; }
+.card .sign-in-button { margin-top: 14px; }
+.card .error { margin-top: 8px; }
+.theme-login { margin-top: 10px; padding-top: 10px; }
+
+@media (max-width: 1099px) {
+  .main-nav { gap: 4px; padding: 8px 16px; }
+  section { scroll-margin-top: 76px; }
+}
+@media (max-width: 900px) {
+  .settings-section { gap: 10px; padding-block: 14px; }
+  .btn:not(.btn-link,.btn-sm,.btn-xs,.btn-icon),
+  .client-network-tabs .client-network-tab { min-height: 44px; }
+  .client-actions-dialog { padding: 14px 12px calc(14px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 600px) {
+  main:not(.card) { padding: 8px; }
+  section { padding: 10px; }
+  .header-row { gap: 8px; padding: 6px 10px; }
+  .main-nav { padding: 6px 10px; }
+  .admin-heading, .sqm-heading { gap: 8px; margin-bottom: 10px; }
+  .network-row { gap: 8px; }
+}
+@media (pointer: coarse) {
+  .btn:not(.btn-link,.btn-sm,.btn-xs,.btn-icon),
+  .theme-control select, .network-behavior select,
+  .admin-field :is(input,select), .sqm-field :is(input,select),
+  .limit-field input, .card :is(input,select) { min-height: 44px; }
+}

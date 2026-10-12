@@ -1,0 +1,27 @@
+#logs {
+  --log-error: #ff9b9b;
+  --log-warning: #f6ca7b;
+  --log-notice: #8ed7ff;
+  --log-info: #dce8ef;
+  --log-debug: #a5b3c0;
+  --log-time: #98a7b6;
+}
+html[data-theme=hacker] #logs {
+  --log-error: #ff9d9d;
+  --log-warning: #f2cb82;
+  --log-notice: #8cdeef;
+  --log-info: #b9e8cb;
+  --log-debug: #8eaa99;
+  --log-time: #87a090;
+}
+.log-error { --log-color: var(--log-error); }
+.log-warning { --log-color: var(--log-warning); }
+.log-notice { --log-color: var(--log-notice); }
+.log-info { --log-color: var(--log-info); }
+.log-debug { --log-color: var(--log-debug); }
+.log-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }
+.log-key { display: inline-flex; align-items: center; gap: 6px; }
+.log-key::before { content: ''; width: 8px; height: 8px; border: 1px solid #647786; border-radius: 2px; background: var(--log-color); }
+#logs .log-output { margin-top: 10px; }
+.log-output .log-line { color: var(--log-color); }
+.log-output .log-time { color: var(--log-time); }

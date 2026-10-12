@@ -5,10 +5,11 @@ for source in pathlib.Path('/data').glob('*.json'):
  shutil.copy2(source,root/source.name)
 shutil.copy2('/data/fas.key',root/'fas.key')
 os.environ['FAS_KEY_FILE']=str(root/'fas.key')
-for name, filename in {'SEEN_FILE':'seen.json','DELETED_FILE':'deleted.json','MODE_FILE':'mode.json','LIMITS_FILE':'limits.json','APPLIED_FILE':'applied.json','SESSION_REFRESH_FILE':'session-refresh.json','BLOCK_FILE':'blocked.json','PUNISH_FILE':'punishment.json','PUNISH_TC_FILE':'punishment-tc.json','WAN_USAGE_FILE':'wan-usage.json','CLIENT_WAN_HISTORY_FILE':'client-wan-history.json','WAN_TRAFFIC_FILE':'wan-traffic.json','TRAFFIC_FILE':'traffic.json','DOMAIN_RANK_FILE':'domain-rank.json','SQM_CONDITIONAL_FILE':'sqm-conditional.json'}.items(): os.environ[name]=str(root/filename)
+for name, filename in {'SEEN_FILE':'seen.json','DELETED_FILE':'deleted.json','MODE_FILE':'mode.json','LIMITS_FILE':'limits.json','APPLIED_FILE':'applied.json','SESSION_REFRESH_FILE':'session-refresh.json','BLOCK_FILE':'blocked.json','PUNISH_FILE':'punishment.json','PUNISH_TC_FILE':'punishment-tc.json','WAN_USAGE_FILE':'wan-usage.json','CLIENT_WAN_HISTORY_FILE':'client-wan-history.json','WAN_TRAFFIC_FILE':'wan-traffic.json','TRAFFIC_FILE':'traffic.json','SQM_CONDITIONAL_FILE':'sqm-conditional.json'}.items(): os.environ[name]=str(root/filename)
 os.environ['HOSTED_PORTAL_DIR']=str(root/'portal')
 os.environ['PORTAL_TYPE_FILE']=str(root/'portal-type.json')
 os.environ['SESSION_SECRET']='isolated-readonly-check'
+os.environ['WAN_QOS_FILE']=str(root/'wan-qos.json')
 with patch('threading.Thread.start'):
  spec=importlib.util.spec_from_file_location('preview','/work/app.py'); manager=importlib.util.module_from_spec(spec); spec.loader.exec_module(manager)
 original=manager.ssh; writes=[]

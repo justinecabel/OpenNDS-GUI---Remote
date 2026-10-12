@@ -1,0 +1,130 @@
+/* Vertical forms share the card's inner edges, with labels above fields. */
+main > section:not(#overview,#clients) {
+  --settings-form-width: 100%;
+  --listing-border: #d8e2e9;
+  --listing-muted: #52687b;
+  --listing-soft: #f6f9fb;
+  max-width: 800px;
+  width: 100%;
+}
+html[data-theme=hacker] main > section:not(#overview,#clients) {
+  --listing-border: #2b4c38;
+  --listing-muted: #a0bcaa;
+  --listing-soft: #10231a;
+}
+.settings-page :is(.admin-heading,.sqm-heading) { margin-bottom: 20px; }
+.settings-page .settings-section {
+  grid-template-columns: minmax(0,1fr);
+  gap: 10px;
+  padding-block: 20px;
+}
+.settings-page .settings-heading .hint { margin-top: 5px; max-width: 65ch; }
+.settings-page .settings-body { min-width: 0; }
+.settings-page :is(.limit-fields,.admin-fields,.sqm-fields,.profile-name),
+.settings-page details .limit-fields {
+  grid-template-columns: minmax(0,1fr);
+  gap: 0;
+  max-width: var(--settings-form-width);
+  width: 100%;
+}
+.settings-page .settings-single { max-width: var(--settings-form-width); }
+.settings-page :is(.admin-field,.limit-field,.sqm-field,.profile-name label,.device-mac):has(>input,>select) {
+  display: grid;
+  grid-template-columns: minmax(0,1fr);
+  align-items: start;
+  gap: 5px;
+  min-width: 0;
+  max-width: var(--settings-form-width);
+  padding: 7px 0;
+}
+.settings-page .setting-label { min-width: 0; font-weight: 500; color: #30495e; }
+html[data-theme=hacker] .settings-page .setting-label { color: #d1e9da; }
+.settings-page .setting-label .sqm-direction { margin-top: 3px; font-weight: 400; }
+.settings-page :is(input:not([type=checkbox],[type=radio]),select) {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 9px;
+  box-sizing: border-box;
+}
+.settings-page .sqm-field > :is(input,select) { margin-top: 0; }
+.settings-page input[type=file] { padding: 3px 5px; }
+.settings-page input::file-selector-button { padding: 3px 7px; margin-right: 6px; }
+.settings-page :is(.admin-actions,.sqm-actions,.limit-toolbar) {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+  max-width: var(--settings-form-width);
+}
+#mode .admin-actions, #status .admin-actions { max-width: none; }
+.settings-page :is(.admin-actions,.sqm-actions,.limit-toolbar) .btn {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 12px;
+  white-space: normal;
+}
+.settings-page :is(.limit-status,.admin-result,.sqm-output):empty { display: none; }
+.settings-page :is(.admin-actions,.sqm-actions,.limit-toolbar) .limit-status { flex-basis: 100%; text-align: right; }
+.settings-page :is(.admin-note,.sqm-note,.portal-guide) { margin-top: 12px; }
+.settings-page :is(.admin-note,.sqm-note,.limits-intro) { max-width: 70ch; line-height: 1.6; }
+.settings-page .settings-body > details { margin-top: 12px; }
+.settings-page details > summary { padding-block: 7px; }
+.settings-page details[open] > summary { margin-bottom: 8px; }
+.settings-page .settings-body > .admin-actions:first-child { margin-top: 0; justify-content: flex-start; }
+.setting-readout { display: grid; grid-template-columns: minmax(0,1fr); max-width: var(--settings-form-width); gap: 5px; padding-block: 7px; }
+.setting-readout > span { color: var(--listing-muted); font-size: var(--text-small); }
+.setting-readout code { overflow-wrap: anywhere; }
+.settings-definitions { margin: 8px 0; }
+.settings-definitions > div { display: grid; grid-template-columns: 100px minmax(0,1fr); gap: 12px; padding: 7px 0; }
+.settings-definitions dt { font-weight: 500; }
+.settings-definitions dd { margin: 0; color: var(--listing-muted); }
+.settings-page .network-row { grid-template-columns: minmax(0,1fr) minmax(0,300px); gap: 20px; padding-block: 16px; }
+.settings-page .network-identity small { line-height: 1.5; }
+.settings-page .network-behavior { gap: 5px; }
+.settings-page .sqm-heading { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 12px; }
+.settings-page .sqm-heading > div:first-child { flex: none; width: auto; }
+.settings-page .sqm-heading p { max-width: 45ch; font-size: var(--text-small); color: var(--listing-muted); }
+.settings-page .sqm-tools { display: flex; flex-wrap: wrap; gap: 6px; width: auto; }
+.settings-page .sqm-tools select { width: 84px; }
+.settings-page .sqm-tools .btn { min-height: 34px; padding: 6px 10px; }
+.settings-page .sqm-summary-queue { grid-template-columns: minmax(0,1fr) repeat(2,minmax(0,110px)); gap: 12px; }
+.settings-page .sqm-summary-queue > div:not(:first-child) { text-align: right; }
+.settings-page .sqm-summary-interface { padding-block: 14px; }
+.settings-page .sqm-summary-policy { padding-top: 10px; font-size: var(--text-small); color: var(--listing-muted); line-height: 1.5; }
+.settings-page .sqm-summary-policy > strong { color: inherit; font-weight: 500; }
+.settings-page .sqm-interface-policy + .sqm-interface-policy { margin-top: 20px; padding-top: 20px; }
+.settings-page .sqm-toggle { display: flex; justify-content: flex-start; align-items: center; flex-direction: row; gap: 10px; padding: 8px 0; margin: 0 0 4px; font-size: var(--text-small); }
+.settings-page .sqm-toggle input { margin: 0; }
+
+/* Saved overrides are compact records, with one selectable MAC per record. */
+#limits .limit-table-wrap table, #limits .limit-table-wrap tbody { display: block; width: 100%; min-width: 0; }
+#limits .limit-table-wrap thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#limits .limit-table-wrap { overflow: visible; }
+#limits #limtable tr { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 3px 24px; padding: 12px 0; border-top: 1px solid var(--listing-border); }
+#limits #limtable tr:first-child { padding-top: 0; border-top: 0; }
+#limits #limtable td { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 3px 8px; padding: 4px 0; border: 0; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+#limits #limtable td[data-label]::before { content: attr(data-label); color: var(--listing-muted); font-size: var(--text-small); font-weight: 400; }
+#limits #limtable td:first-child { grid-column: 1/-1; margin-bottom: 5px; text-decoration: none; cursor: default; }
+#limits #limtable td:first-child::before { content: none; }
+#limits #limtable td .btn-link { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+#limits #limtable .limit-empty td { display: block; color: var(--listing-muted); }
+@media (max-width: 600px) {
+  .settings-page :is(.admin-heading,.sqm-heading) { margin-bottom: 16px; }
+  .settings-page .network-row { grid-template-columns: minmax(0,1fr); gap: 5px; }
+  .settings-page .settings-section { padding-block: 16px; }
+  .settings-page :is(.admin-actions,.sqm-actions,.limit-toolbar) { justify-content: flex-start; }
+  .settings-page :is(.admin-actions,.sqm-actions,.limit-toolbar) .limit-status { text-align: left; }
+  .settings-page .sqm-heading { grid-template-columns: minmax(0,1fr); }
+  .settings-page .sqm-summary-queue { grid-template-columns: minmax(0,1fr) repeat(2,minmax(0,85px)); gap: 8px; }
+  #limits #limtable tr { grid-template-columns: minmax(0,1fr); }
+}
+@media (pointer: coarse) {
+  .settings-page :is(input:not([type=checkbox],[type=radio]),select),
+  .settings-page :is(.admin-actions,.sqm-actions,.limit-toolbar,.sqm-tools) .btn { min-height: 44px; }
+}

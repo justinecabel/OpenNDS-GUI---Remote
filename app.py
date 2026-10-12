@@ -28,6 +28,8 @@ from functools import wraps
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import Flask, Response, jsonify, make_response, redirect, render_template, request, session, url_for
+import network_policy
+import wan_shaping
 
 HOST = os.environ.get("OWRT_HOST", "192.168.1.1")
 SSH_USER = os.environ.get("OWRT_USER", "root")
@@ -56,6 +58,12 @@ BLOCK_FILE = os.environ.get("BLOCK_FILE", "/data/blocked.json")
 TRAFFIC_FILE = os.environ.get("TRAFFIC_FILE", "/data/traffic.json")
 TRAFFIC_IFACE = os.environ.get("TRAFFIC_IFACE", "br-lan")
 WAN_IFACE = os.environ.get("WAN_IFACE", "eth0")
+WAN_QOS_FILE = os.environ.get("WAN_QOS_FILE", "/data/wan-qos.json")
+# Networks that always require an explicit portal login, independently of the
+# primary LAN's operation mode. Invalid configuration fails at startup.
+PORTAL_SUBNETS = tuple(ipaddress.IPv4Network(value.strip()) for value in
+                       os.environ.get("PORTAL_SUBNETS", "").split(",") if value.strip())
+NETWORKS_FILE = os.environ.get("NETWORKS_FILE", "/data/networks.json")
 WAN_COUNTER_REMOTE = os.environ.get("WAN_COUNTER_REMOTE", "/etc/opennds-manager/wan-counter.state")
 WAN_USAGE_FILE = os.environ.get("WAN_USAGE_FILE", "/data/wan-usage.json")
 CLIENT_WAN_HISTORY_FILE = os.environ.get("CLIENT_WAN_HISTORY_FILE", "/data/client-wan-history.json")
@@ -67,16 +75,6 @@ WAN_USAGE_SCHEMA_VERSION = 2
 CLIENT_WAN_HISTORY_SECS = 24 * 60 * 60
 CLIENT_WAN_HISTORY_BUCKET_SECS = 60
 CLIENT_WAN_LIVE_HISTORY_SECS = 60 * 60
-DOMAIN_RANK_FILE = os.environ.get("DOMAIN_RANK_FILE", "/data/domain-rank.json")
-DOMAIN_LOG_FILE = os.environ.get("DOMAIN_LOG_FILE", "/tmp/opennds-dns-queries.log")
-DOMAIN_REFRESH_INTERVAL = max(60.0, float(os.environ.get("DOMAIN_REFRESH_INTERVAL", "1800")))
-DOMAIN_LOG_COLLECT_INTERVAL = 60.0
-DOMAIN_WINDOW_SECS = 24 * 60 * 60
-DOMAIN_WATCH_LIMIT = 50
-DOMAIN_DETAIL_LIMIT = 30
-DOMAIN_LOG_MAX_BYTES = 1024 * 1024
-LAST_DNS_RETENTION_SECS = 7 * 24 * 60 * 60
-LAST_DNS_LIMIT = 100
 try:
     CLIENTS_CACHE_SECS = min(3.0, max(0.0, float(os.environ.get("CLIENTS_CACHE_SECS", "0.75"))))
 except ValueError:
@@ -104,15 +102,20 @@ PUNISH_IFB = os.environ.get("PUNISH_IFB", "")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("opennds-manager")
 _ssh_lock = threading.Lock()
+_telemetry_ssh_lock = threading.Lock()
 _history_lock = threading.Lock()
 _traffic_lock = threading.Lock()
 _wan_usage_lock = threading.Lock()
 _wan_traffic_lock = threading.Lock()
-_domain_rank_lock = threading.Lock()
 _clients_cache_lock = threading.Lock()
 _portal_lock = threading.Lock()
 _punishment_lock = threading.Lock()
 _punishment_tc_lock = threading.Lock()
+_qos_status_lock = threading.Lock()
+_qos_status_data = {"checked_at": 0, "networks": [], "queues": []}
+_networks_lock = threading.RLock()
+_networks_data = None
+_networks_checked_at = 0.0
 _throttle_lock = threading.Lock()
 _sqm_conditional_lock = threading.Lock()
 _traffic_data = None
@@ -127,8 +130,6 @@ _clients_cache_until = 0.0
 _trusted_macs_cache = set()
 _trusted_macs_cache_at = 0.0
 _last_sqm_conditional_check = 0.0
-_domain_refresh_at = 0.0
-_domain_refresh_lock = threading.Lock()
 _auth_attempts = {}
 _auth_control_lock = threading.Lock()
 HISTORY_GENERATION = secrets.token_hex(8)
@@ -137,7 +138,6 @@ MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 CONNTRACK_TUPLE_RE = re.compile(
     r"\bsrc=(?P<src>\S+)\s+dst=(?P<dst>\S+)(?P<fields>(?:(?!\bsrc=).)*?)\bbytes=(?P<bytes>\d+)")
 CONNTRACK_PORTS_RE = re.compile(r"\bsport=(\d+)\s+dport=(\d+)")
-DNS_QUERY_RE = re.compile(r"\bquery\[[^]]+\]\s+([^\s]+)\s+from\s+([^\s]+)", re.IGNORECASE)
 RATE_KEYS = {"up", "down"}
 PUNISH_DELAY_MAX = 10_000
 PUNISH_CAP_MAX = 10_000_000
@@ -237,9 +237,9 @@ def logout():
     return redirect(url_for("login"))
 
 
-def ssh(command: str, data: bytes | None = None, timeout=15):
-    """Run a command on the OpenWrt VM; returns (returncode, stdout bytes, stderr str)."""
-    with _ssh_lock:
+def ssh(command: str, data: bytes | None = None, timeout=15, *, telemetry=False):
+    """Run SSH; kernel-only telemetry must not wait for slow ndsctl/control reads."""
+    with (_telemetry_ssh_lock if telemetry else _ssh_lock):
         try:
             p = subprocess.run(
                 ["ssh", "-i", SSH_KEY, "-p", SSH_PORT,
@@ -630,10 +630,14 @@ def status():
 @app.route("/api/clients")
 @requires_auth
 def clients():
+    networks = [{key: row.get(key) for key in
+                 ("name", "device", "subnets", "mode", "primary", "up")}
+                for row in _network_state().get("networks", [])
+                if row.get("subnets") and row.get("role") == "LAN"]
     with _clients_cache_lock:
         snapshot = _clients_cache_data
     if snapshot is None:
-        return jsonify(ok=True, data={"clients": {}}, sampled_at=0, stale=True,
+        return jsonify(ok=True, data={"clients": {}, "networks": networks}, sampled_at=0, stale=True,
                        output="collecting client snapshot")
     payload = dict(snapshot)
     # The collector keeps the unmodified openNDS records for the auto-control
@@ -641,12 +645,44 @@ def clients():
     payload.pop("_live_clients", None)
     payload.pop("_collection_started_at", None)
     payload = _with_live_wan_usage(payload)
+    hidden_ips = _infrastructure_client_ips()
+    payload["data"] = {**payload.get("data", {}), "clients": {
+        key: dict(client) for key, client in payload.get("data", {}).get("clients", {}).items()
+        if client.get("ip") not in hidden_ips}}
+    primary_mode = _load_mode()["mode"]
+    payload["data"]["networks"] = networks
+    for client in payload.get("data", {}).get("clients", {}).values():
+        client["authentication_mode"] = _client_mode(client, primary_mode)
+        network = _client_network(client)
+        if network and network.get("role") != "LAN":
+            network = None
+        client["network"] = network["name"] if network else ""
+        client["interface"] = network["device"] if network else ""
     try:
         payload["stale"] = int(time.time()) - int(payload.get("sampled_at", 0)) > \
             max(CLIENTS_SNAPSHOT_INTERVAL * 3, 10)
     except (TypeError, ValueError):
         payload["stale"] = True
     return jsonify(payload)
+
+
+def _infrastructure_client_ips():
+    """Known manager/router addresses, excluded from display only; no router reads."""
+    state = _network_state()
+    candidates = [HOST, state.get("gateway_ip"), state.get("metadata", {}).get("fasremoteip")]
+    try:
+        candidates.append(urlsplit(FAS_BASE_URL).hostname)
+    except ValueError:
+        pass
+    for network in state.get("networks", []):
+        candidates.extend(address.get("address") for address in network.get("addresses", []))
+    addresses = set()
+    for candidate in candidates:
+        try:
+            addresses.add(str(ipaddress.ip_address(candidate)))
+        except (ValueError, TypeError):
+            pass
+    return addresses
 
 
 @app.route("/api/clients/<mac>/history")
@@ -656,19 +692,6 @@ def client_wan_history(mac):
     if not MAC_RE.match(mac):
         return jsonify(ok=False, output="invalid MAC"), 400
     return jsonify(ok=True, **_history_response(_client_wan_history(mac)))
-
-
-@app.route("/api/clients/<mac>/dns")
-@requires_auth
-def client_dns_history(mac):
-    mac = mac.lower()
-    if not MAC_RE.match(mac):
-        return jsonify(ok=False, output="invalid MAC"), 400
-    # This endpoint is called only while the corresponding expanded client
-    # dialog is open. Refresh first so the list can reflect new queries rather
-    # than waiting for the normal one-minute background collection.
-    _refresh_domain_ranking()
-    return jsonify(ok=True, last_dns=_last_dns_client_snapshot().get(mac, []))
 
 
 def _collect_clients_snapshot():
@@ -865,69 +888,358 @@ def _router_interface_roles(interfaces):
     return roles
 
 
+def _network_state():
+    global _networks_data
+    with _networks_lock:
+        if _networks_data is None:
+            raw = _load_json(NETWORKS_FILE, {})
+            _networks_data = raw if isinstance(raw, dict) else {}
+        return _networks_data
+
+
+def _save_network_state(state):
+    global _networks_data
+    _save_json(NETWORKS_FILE, state)
+    _networks_data = state
+
+
+def _scan_networks():
+    """Read netifd, firewall membership and DHCP together; never change router config."""
+    command = ("ubus call network.interface dump || exit 1; echo @@FIREWALL; "
+               "ubus call uci get '{\"config\":\"firewall\"}' || exit 1; echo @@DHCP; "
+               "ubus call uci get '{\"config\":\"dhcp\"}' || exit 1; echo @@META; "
+               "cat /tmp/ndscids/ndsinfo 2>/dev/null || true; "
+               "for field in gatewayinterface gatewayport fasremoteip fasport faspath gatewayfqdn; do "
+               "value=$(uci -q get opennds.@opennds[0].$field || true); "
+               "printf '%s=%s\\n' \"$field\" \"$value\"; done; "
+               "printf 'wrapper_sha='; sha256sum /usr/lib/opennds/libopennds.sh 2>/dev/null | cut -d' ' -f1; "
+               "printf '\\nhelper_sha='; sha256sum /usr/lib/opennds/opennds-extra-interface.sh 2>/dev/null | cut -d' ' -f1; "
+               "printf '\\ninit_sha='; sha256sum /etc/init.d/opennds-extra-interface 2>/dev/null | cut -d' ' -f1; printf '\\n'")
+    with _networks_lock:
+        rc, raw, err = ssh(command, timeout=20)
+        if rc != 0:
+            raise ValueError(err.strip() or "OpenWrt network discovery failed")
+        try:
+            dump, rest = raw.decode().split("@@FIREWALL\n", 1)
+            firewall, rest = rest.split("@@DHCP\n", 1)
+            dhcp, metadata = rest.split("@@META\n", 1)
+            meta = {}
+            for line in metadata.splitlines():
+                key, _, value = line.partition("=")
+                if value.strip('"'):
+                    meta[key] = value.strip('"')
+            discovery = network_policy.discover(json.loads(dump), json.loads(firewall)["values"],
+                                                json.loads(dhcp)["values"], meta)
+        except (KeyError, UnicodeError, ValueError) as exc:
+            raise ValueError(f"Invalid OpenWrt network discovery: {exc}") from exc
+        state = _network_state()
+        modes = dict(state.get("modes", {}))
+        if not state.get("initialized"):
+            # Import the previous topology policy once, using discovered interface identities.
+            for row in discovery["networks"]:
+                if row["primary"]:
+                    modes[row["name"]] = _load_mode()["mode"]
+                elif any(ipaddress.IPv4Network(n) == legacy for n in row["subnets"] for legacy in PORTAL_SUBNETS):
+                    modes[row["name"]] = "portal"
+        present = {r["name"] for r in discovery["networks"]}
+        for old_row in state.get("networks", []):
+            if old_row["name"] not in present and modes.get(old_row["name"], "unmanaged") != "unmanaged":
+                discovery["networks"].append({**old_row, "up": False, "eligible": False,
+                                             "reason": "Interface missing; saved attachment retained"})
+        for row in discovery["networks"]:
+            row["mode"] = modes.get(row["name"], "unmanaged")
+        next_state = {**state, **discovery, "modes": modes, "initialized": True,
+                      "scanned_at": int(time.time())}
+        _save_network_state(next_state)
+        return next_state
+
+
+def _networks_for_ui(state):
+    return {"networks": state.get("networks", []), "scanned_at": state.get("scanned_at"),
+            "primary_device": state.get("primary_device"), "error": state.get("error", ""),
+            "output": state.get("output", "")}
+
+
+def _apply_network_modes(requested):
+    with _auth_control_lock:
+        ok, message = _apply_network_modes_locked(requested)
+        # Queue reconciliation takes _punishment_tc_lock and reads network
+        # state. Release _networks_lock first so an in-flight Punish action
+        # can finish reading that state and release its queue lock.
+        if ok:
+            _control_once_locked()
+        return ok, message
+
+
+def _apply_network_modes_locked(requested):
+    """Apply and publish modes under the caller's auth-control lock."""
+    with _networks_lock:
+        state = _network_state()
+        network_policy.validate_modes(state, requested)
+        modes = {**state.get("modes", {}), **requested}
+        unavailable = [r for r in state["networks"] if not r["eligible"] and modes.get(r["name"], "unmanaged") != "unmanaged"]
+        if unavailable:
+            error = "; ".join(f"{r['name']}: {r['reason']}" for r in unavailable) + "; existing attachments retained"
+            _save_network_state({**state, "error": error})
+            return False, error
+        # Only attach networks that currently exist and are eligible. Save identity
+        # so a temporarily down interface keeps its selected behavior when it returns.
+        config = network_policy.compile_config(state, {r["name"]: modes.get(r["name"], "unmanaged")
+            if r["eligible"] else "unmanaged" for r in state["networks"]})
+        previous = state.get("applied_config")
+        helpers_match = all(state.get("metadata", {}).get(key) == value for key, value in config["helpers"].items())
+        if previous != config or not helpers_match:
+            script = network_policy.install_script(config, previous)
+            rc, out, err = ssh("sh -s", data=script.encode(), timeout=90)
+            if rc != 0:
+                error = (out.decode(errors="replace") + err).strip() or "Network attachment failed"
+                _save_network_state({**state, "error": error})
+                return False, error
+        rows = [{**r, "mode": modes.get(r["name"], "unmanaged")} for r in state["networks"]]
+        mode_state = _load_mode()
+        resets = set(mode_state["network_resets"])
+        for client in _live_clients_for_control() or []:
+            old_row = _client_network(client)
+            if old_row and modes.get(old_row["name"], "unmanaged") != old_row["mode"]:
+                if modes.get(old_row["name"], "unmanaged") in ("portal", "unmanaged"):
+                    resets.add(client["mac"].lower())
+        _save_network_state({**state, "modes": modes, "networks": rows,
+                             "metadata": {**state["metadata"], **config["helpers"]},
+                             "applied_config": config, "error": "", "output": "Applied"})
+        primary = next(r for r in rows if r["primary"])
+        mode_state["mode"] = modes.get(primary["name"], mode_state["mode"])
+        mode_state["network_resets"] = sorted(resets)
+        _save_mode(mode_state)
+        return True, "Applied; affected automatic sessions follow their selected network behavior"
+
+
+def _sync_networks_if_due():
+    global _networks_checked_at
+    if time.monotonic() - _networks_checked_at < 60:
+        return
+    _networks_checked_at = time.monotonic()
+    try:
+        state = _scan_networks()
+        ok, message = _apply_network_modes({})
+        if not ok:
+            log.warning("network policy pending: %s", message)
+    except Exception as exc:
+        with _networks_lock:
+            _save_network_state({**_network_state(), "error": str(exc)})
+        log.warning("network discovery unavailable: %s", exc)
+
+
+@app.route("/api/networks", methods=["GET", "PUT"])
+@requires_auth
+def networks():
+    try:
+        state = _scan_networks()
+        if request.method == "GET":
+            return jsonify(ok=True, **_networks_for_ui(state))
+        body = request.get_json(force=True)
+        if not isinstance(body, dict):
+            raise ValueError("Network settings must be an object")
+        ok, output = _apply_network_modes(body.get("modes"))
+        return jsonify(ok=ok, **{**_networks_for_ui(_network_state()), "output": output}), (200 if ok else 502)
+    except ValueError as exc:
+        return jsonify(ok=False, output=str(exc)), (400 if request.method == "PUT" else 502)
+
+
+def _read_sqm_queues():
+    rc, out, err = ssh("uci -q show sqm")
+    if rc != 0:
+        return [], err or "no SQM configuration"
+    sections = {}
+    for line in out.decode(errors="replace").splitlines():
+        match = re.fullmatch(r"sqm\.([A-Za-z0-9_]+|@queue\[\d+\])(?:\.(\w+))?=(.*)", line)
+        if not match:
+            continue
+        section, key, raw = match.groups()
+        try:
+            values = shlex.split(raw)
+        except ValueError:
+            continue
+        if len(values) == 1:
+            sections.setdefault(section, {})[key or ".type"] = values[0]
+    return [{**config, "section": section} for section, config in sections.items()
+            if config.get(".type") == "queue"], ""
+
+
+def _sqm_for_ui(config):
+    result = {key: value for key, value in config.items() if not key.startswith(".")}
+    for key in ("download", "upload"):
+        try:
+            result[key] = _kbits_to_kbytes(int(result[key]))
+        except (KeyError, ValueError):
+            pass
+    return result
+
+
+def _sqm_baseline_for_ui(config, policy):
+    """Keep the saved normal rates separate from a daily rule's router rates."""
+    baseline = (policy.get("baseline", {}) if policy.get("placement") == "lan"
+                else policy.get("baselines", {}).get("lan", {}))
+    normal = dict(config)
+    if set(baseline) == {"download", "upload"}:
+        normal.update(baseline)
+    return _sqm_for_ui(normal)
+
+
+def _primary_sqm_command(command, interface=None):
+    """Resolve an exact LAN queue, or the legacy native LAN/WAN queue."""
+    if interface is not None and not _IFACE_RE.fullmatch(interface):
+        raise ValueError("invalid SQM interface")
+    primary, wan = shlex.quote(interface or _primary_lan_device()), shlex.quote(WAN_IFACE)
+    prefix = (". /lib/functions.sh; config_load sqm; sqm_primary=; sqm_wan=; sqm_matches=0; "
+              "sqm_pick() { local dev; config_get dev \"$1\" interface; "
+              f"if [ \"$dev\" = {primary} ]; then sqm_primary=$1; sqm_matches=$((sqm_matches+1)); fi; "
+              f"[ \"$dev\" != {wan} ] || sqm_wan=$1; "
+              "return 0; }; config_foreach sqm_pick queue; "
+              "[ \"$sqm_matches\" -le 1 ] || { echo 'Duplicate LAN SQM queues' >&2; exit 1; }; ")
+    if interface is None:
+        prefix += "sqm_primary=${sqm_primary:-$sqm_wan}; "
+    missing = "No SQM queue for " + interface if interface else "No primary LAN or WAN SQM queue"
+    prefix += '[ -n "$sqm_primary" ] || { echo ' + shlex.quote(missing) + ' >&2; exit 1; }; '
+    prefix += 'config_get sqm_primary_iface "$sqm_primary" interface; '
+    return prefix + command.replace("sqm.@queue[0]", 'sqm."$sqm_primary"')
+
+
+def _sqm_apply_script(device_word, enabled_word):
+    """Use runtime state to verify scoped SQM operations, whose exit codes vary.
+
+    run.sh stop returns 1 for an interface without a state file. start can
+    return 1 after successfully starting a queue if a later section is skipped.
+    Both words are internally quoted literals or trusted shell expressions.
+    """
+    # sqm.conf probes optional iptables binaries with command -v. Those probes
+    # may return 127 on nft-only OpenWrt; run.sh normally sources it without -e.
+    return ('[ -r /etc/sqm/sqm.conf ] || { echo "SQM configuration unavailable" >&2; exit 1; }; '
+            'set +e; . /etc/sqm/sqm.conf; set -e; '
+            f'sqm_apply_iface={device_word}; sqm_apply_enabled={enabled_word}; '
+            '[ -n "$SQM_STATE_DIR" ] || { echo "SQM state directory unavailable" >&2; exit 1; }; '
+            'sqm_apply_state="$SQM_STATE_DIR/$sqm_apply_iface.state"; '
+            'if [ -f "$sqm_apply_state" ]; then '
+            '/usr/lib/sqm/run.sh stop "$sqm_apply_iface" || :; fi; '
+            'if [ -f "$sqm_apply_state" ]; then '
+            'echo "SQM stop failed for $sqm_apply_iface; saved config retained" >&2; exit 1; fi; '
+            'if [ "$sqm_apply_enabled" = 1 ]; then '
+            '/usr/lib/sqm/run.sh start "$sqm_apply_iface" || :; '
+            'if [ ! -f "$sqm_apply_state" ]; then '
+            'echo "SQM start failed for $sqm_apply_iface; saved config retained" >&2; '
+            "logread | grep -i 'SQM:' | tail -n 12 >&2; exit 1; fi; fi")
+
+
+def _save_extra_sqm(config, settings):
+    """Apply only the selected interface; never restart another LAN's queues."""
+    iface = shlex.quote(settings["interface"])
+    commands = ["[ ! -f /etc/config/sqm ] || cp /etc/config/sqm /etc/config/sqm.manager-bak"]
+    if config:
+        commands.append("section=" + shlex.quote(config["section"]))
+    else:
+        commands.append("section=$(uci add sqm queue)")
+        settings = {"linklayer": "none", **settings}
+    commands += [f'uci set sqm."$section".{key}={shlex.quote(str(value))}'
+                 for key, value in settings.items()]
+    commands += ["uci commit sqm", _sqm_apply_script(iface, settings["enabled"])]
+    rc, out, err = ssh("set -e; " + "; ".join(commands), timeout=30)
+    return rc == 0, ((out.decode(errors="replace") + err).strip()
+                     or f"SQM apply failed for {settings['interface']} (exit {rc})") if rc else ""
+
+
+_sqm_settings_lock = threading.RLock()
+
+
 @app.route("/api/sqm", methods=["GET", "PUT"])
 @requires_auth
 def sqm():
-    if request.method == "GET":
-        rc, out, err = ssh("uci -q show sqm.@queue[0]")
-        interfaces = _router_interfaces()
-        interface_roles = _router_interface_roles(interfaces)
-        if rc != 0:
-            return jsonify(ok=True, configured=False, config={},
-                           interfaces=interfaces, interface_roles=interface_roles,
-                           output=err or "no SQM queue configured (is sqm-scripts installed?)")
-        cfg = {}
-        for line in out.decode(errors="replace").splitlines():
-            m = re.match(r"^sqm\.[^.]+\.(\w+)='?(.*?)'?$", line)
-            if m:
-                cfg[m.group(1)] = m.group(2)
-        for key in ("download", "upload"):
-            try:
-                cfg[key] = _kbits_to_kbytes(int(cfg[key]))
-            except (KeyError, ValueError):
-                pass
-        if cfg.get("interface") and cfg["interface"] not in interfaces:
-            interfaces.append(cfg["interface"])
-            interfaces.sort()
-        return jsonify(ok=True, configured=True, config=cfg, interfaces=interfaces,
-                       interface_roles=interface_roles, rate_unit="KB/s")
-    b = request.get_json(force=True)
-    try:
-        down = _kbytes_to_kbits(b["download"], 10_000_000)
-        up = _kbytes_to_kbits(b["upload"], 10_000_000)
-    except (KeyError, TypeError, ValueError):
-        return jsonify(ok=False, output="download/upload must be valid KB/s values"), 400
-    iface, qdisc, script = b.get("interface", ""), b.get("qdisc", "cake"), b.get("script", "piece_of_cake.qos")
-    if not _IFACE_RE.match(iface) or qdisc not in _SQM_QDISC or script not in _SQM_SCRIPT:
-        return jsonify(ok=False, output="invalid value"), 400
-    enabled = "1" if b.get("enabled") else "0"
-    rc, out, err = ssh("uci -q show sqm.@queue[0]")
-    current = dict(re.findall(r"^sqm\.[^.]+\.(\w+)='([^']*)'", out.decode(errors="replace"), re.MULTILINE))
-    if rc != 0 or any(current.get(key) != value for key, value in
-                      {"enabled": enabled, "interface": iface, "qdisc": qdisc, "script": script}.items()):
-        return jsonify(ok=False, pending=True,
-                       output="SQM structural changes require maintenance; current queues were left unchanged"), 409
-    ok, error = _set_sqm_rates({"download": down, "upload": up})
-    if not ok:
-        return jsonify(ok=False, pending=True, output=error), 409
-    _set_sqm_conditional_baseline({"download": down, "upload": up})
-    conditional_ok, conditional_message = _reconcile_sqm_conditional(force=True)
-    message = "applied"
-    if conditional_message:
-        message += f"; {conditional_message}"
-    return jsonify(ok=conditional_ok, output=message), (200 if conditional_ok else 502)
+    with _sqm_settings_lock:
+        queues, error = _read_sqm_queues()
+        if error:
+            return jsonify(ok=False, output=error), 502
+        interfaces = [name for name in _router_interfaces() if name != "lo" and not name.startswith("ifb")]
+        rows = _network_state().get("networks", [])
+        roles = {row["device"]: row["name"] + " · " + row["role"]
+                 for row in rows if row.get("device") and row.get("subnets")}
+        for config in queues:
+            if config.get("interface") and config["interface"] not in interfaces:
+                interfaces.append(config["interface"])
+        interfaces = sorted(set(interfaces))
+        primary = next((q for q in queues if q.get("interface") == _primary_lan_device()), None)
+        primary = primary or next((q for q in queues if q.get("interface") == WAN_IFACE), None)
+        if request.method == "GET":
+            selected = request.args.get("interface") or (primary or {}).get("interface") or _primary_lan_device()
+            matches = [q for q in queues if q.get("interface") == selected]
+            if len(matches) > 1:
+                return jsonify(ok=False, output="Duplicate SQM queues for " + selected), 409
+            config = matches[0] if matches else {}
+            with _sqm_conditional_lock:
+                rules = _load_sqm_conditional_store()["rules"]
+                baselines = [_sqm_baseline_for_ui(q, rules.get(q.get("interface"), {}))
+                             for q in queues]
+                baseline_config = (_sqm_baseline_for_ui(config, rules.get(selected, {}))
+                                   if config else {})
+            return jsonify(ok=True, configured=bool(config), config=_sqm_for_ui(config),
+                           baseline_config=baseline_config, baseline_queues=baselines,
+                           selected_interface=selected, interfaces=interfaces, interface_roles=roles,
+                           queues=[_sqm_for_ui(q) for q in queues], rate_unit="KB/s",
+                           primary_interface=(primary or {}).get("interface", _primary_lan_device()),
+                           output="" if config else "No SQM queue · Apply to create")
+        body = request.get_json(force=True)
+        if not isinstance(body, dict):
+            return jsonify(ok=False, output="SQM settings must be an object"), 400
+        try:
+            down = _kbytes_to_kbits(body["download"], 10_000_000)
+            up = _kbytes_to_kbits(body["upload"], 10_000_000)
+        except (KeyError, TypeError, ValueError):
+            return jsonify(ok=False, output="download/upload must be valid KB/s values"), 400
+        iface, qdisc, script = body.get("interface", ""), body.get("qdisc", "cake"), body.get("script", "piece_of_cake.qos")
+        if (not isinstance(iface, str) or not _IFACE_RE.fullmatch(iface) or iface not in interfaces
+                or qdisc not in _SQM_QDISC or script not in _SQM_SCRIPT):
+            return jsonify(ok=False, output="invalid interface or SQM value"), 400
+        matches = [q for q in queues if q.get("interface") == iface]
+        if len(matches) > 1:
+            return jsonify(ok=False, output="Duplicate SQM queues for " + iface), 409
+        config = matches[0] if matches else {}
+        settings = {"enabled": "1" if body.get("enabled") else "0", "interface": iface,
+                    "qdisc": qdisc, "script": script, "download": down, "upload": up}
+        is_primary = bool(primary and config.get("section") == primary["section"])
+        if is_primary:
+            if any(config.get(key) != settings[key] for key in ("enabled", "interface", "qdisc", "script")):
+                with _punishment_tc_lock:
+                    ok, error = _restart_sqm(settings)
+            else:
+                ok, error = _set_sqm_rates({"download": down, "upload": up})
+        elif config and qdisc == "cake" and all(config.get(key) == settings[key]
+                for key in ("enabled", "interface", "qdisc", "script")) and settings["enabled"] == "1":
+            ok, error = _set_sqm_rates({"download": down, "upload": up}, iface)
+        else:
+            with _punishment_tc_lock:
+                ok, error = _save_extra_sqm(config, settings)
+        if not ok:
+            return jsonify(ok=False, output=error), 502
+        _set_sqm_conditional_baseline({"download": down, "upload": up}, iface)
+        ok, message = _reconcile_sqm_conditional(force=True, interface=iface)
+        queues_ok, queues_message = (_refresh_punishment() if is_primary else _refresh_punishment(iface))
+        if not queues_ok:
+            return jsonify(ok=False, output="SQM saved; client queues: " + queues_message), 502
+        return jsonify(ok=ok, output="Applied " + iface + ("; " + message if message else "")), (200 if ok else 502)
 
 
 @app.route("/api/sqm/conditional", methods=["GET", "PUT"])
 @requires_auth
 def sqm_conditional():
     if request.method == "GET":
-        return jsonify(ok=True, **_sqm_conditional_for_ui(_load_sqm_conditional()))
+        interface = request.args.get("interface") or _primary_lan_device()
+        with _sqm_conditional_lock:
+            return jsonify(ok=True, **_sqm_conditional_response(interface))
     body = request.get_json(force=True)
     if not isinstance(body, dict):
         return jsonify(ok=False, output="daily SQM rule must be an object"), 400
-    with _sqm_conditional_lock:
-        policy = _load_sqm_conditional()
+    interface = body.get("interface", _primary_lan_device())
+    if not isinstance(interface, str) or interface not in _sqm_daily_interfaces():
+        return jsonify(ok=False, output="Select a discovered LAN interface"), 400
+    with _sqm_settings_lock, _sqm_conditional_lock:
+        policy = _load_sqm_conditional(interface)
         try:
             enabled = body.get("enabled", policy["enabled"])
             if not isinstance(enabled, bool):
@@ -942,17 +1254,23 @@ def sqm_conditional():
                                        PUNISH_CAP_MAX)
         except (TypeError, ValueError) as error:
             return jsonify(ok=False, output=f"invalid daily SQM rule: {error}"), 400
+        if enabled or force_today:
+            queue, error = _daily_sqm_queue(interface)
+            if not queue:
+                return jsonify(ok=False, output=error), 409
         if force_today:
             enabled = True
-            today, _ = _today_wan_traffic_total()
+            today, _ = _today_interface_wan_total(interface)
             policy["forced_date"] = today
         elif not enabled:
             policy["forced_date"] = ""
         policy.update(enabled=enabled, threshold_gb=threshold_gb, download=download, upload=upload,
                       error="")
-        _save_sqm_conditional(policy)
-    ok, message = _reconcile_sqm_conditional(force=True)
-    return jsonify(ok=ok, output=message, **_sqm_conditional_for_ui(_load_sqm_conditional())), \
+        _save_sqm_conditional(policy, interface)
+    ok, message = _reconcile_sqm_conditional(force=True, interface=interface)
+    with _sqm_conditional_lock:
+        result = _sqm_conditional_response(interface)
+    return jsonify(ok=ok, output=message, **result), \
         (200 if ok else 502)
 
 
@@ -979,6 +1297,9 @@ def action():
         if not MAC_RE.match(mac):
             return jsonify(ok=False, output="invalid MAC"), 400
         mac = mac.lower()
+        target = _client_tc_interface(_cached_client(mac))
+        if act == "punish" and not target:
+            return jsonify(ok=False, output="Client must belong to a discovered managed LAN"), 409
         with _punishment_lock:
             previous = _load_punishment_policy()
             policy = dict(previous)
@@ -989,7 +1310,7 @@ def action():
                 punished.discard(mac)
             policy["punished"] = sorted(punished)
             _save_punishment_policy(policy)
-        ok, detail = _refresh_punishment()
+        ok, detail = _refresh_punishment(target) if target else _refresh_punishment()
         if not ok:
             # Do not leave a client marked as punished when its qdisc could not
             # be installed. The previous policy remains the truthful state.
@@ -1014,7 +1335,7 @@ def action():
     if act in {"deauth", "trust", "untrust", "auth"}:
         if not MAC_RE.match(mac):
             return jsonify(ok=False, output="invalid MAC"), 400
-        if act == "deauth" and _load_mode()["mode"] == "auto_auth":
+        if act == "deauth" and _client_mode(_cached_client(mac)) == "auto_auth":
             return jsonify(ok=False, output="deauth is unavailable while auto-login is active"), 409
         if act == "auth":
             try:
@@ -1208,7 +1529,7 @@ def _hosted_fas_page(values, landing=False):
     )
     page = _read_hosted_index()
     placeholder = "{{CONTINUE_FORM}}"
-    auto_mode = _load_mode()["mode"] != "portal"
+    auto_mode = _client_mode(values) != "portal"
     page = page.replace("{{CONNECTED}}", "1" if auto_mode else "0")
     custom_values = {"{{AUTH_ACTION}}": auth_action, "{{TOKEN}}": token, "{{REDIR}}": redir}
     if any(name in page for name in custom_values):
@@ -1256,7 +1577,7 @@ def hosted_fas():
         return _fas_response(page)
     try:
         fields = _decode_fas_query(request.args.get("fas", ""))
-        if _load_mode()["mode"] == "auto_auth":
+        if _client_mode(fields) == "auto_auth":
             return _auto_auth_fas_redirect(fields)
         page, gateway_origin, _ = _hosted_fas_page(fields)
     except (RuntimeError, ValueError) as e:
@@ -1280,9 +1601,13 @@ def hosted_fas_continue():
                            str(c.get("mac", "")).lower() == fields.get("clientmac", "").lower()), None)
             if not client or not MAC_RE.fullmatch(str(client.get("mac", ""))):
                 return Response("Invalid client login request.", status=403)
+            if fields.get("clientip") != client.get("ip"):
+                return Response("Invalid client login request.", status=403)
             mac = client["mac"].lower()
             if mac in _load_blocked():
                 return Response("This client is blocked.", status=403)
+            if _client_mode(client) == "unmanaged":
+                return Response("This network is not managed by openNDS. Ask the administrator to scan the LAN settings.", status=409)
             if client.get("state") == "Preauthenticated":
                 effective = _effective(mac, _load_limits())
                 # Let a naturally ended session detach/drain an old queue
@@ -1302,7 +1627,7 @@ def hosted_fas_continue():
             elif client.get("state") != "Authenticated":
                 return Response("The client is not ready to log in.", status=409)
         destination = FAS_BASE_URL + "/fas?landing=1"
-        if _load_mode()["mode"] == "auto_auth":
+        if _client_mode(client) == "auto_auth":
             origin = fields.get("originurl", "")
             parsed = urlsplit(origin)
             if parsed.scheme in {"http", "https"} and parsed.netloc and not parsed.username and not parsed.password and len(origin) <= 4096:
@@ -1740,7 +2065,18 @@ def _load_wan_usage():
         version = int(raw.get("version", 0))
     except (TypeError, ValueError):
         version = 0
+    interface_days = {}
+    raw_interface_days = raw.get("interface_days")
+    for iface, values in (raw_interface_days.items() if isinstance(raw_interface_days, dict) else []):
+        clean = counters(values)
+        if isinstance(iface, str) and _IFACE_RE.fullmatch(iface) and clean:
+            interface_days[iface] = clean
+    try:
+        interface_tracking_since = max(0, int(raw.get("interface_tracking_since", 0)))
+    except (ValueError, TypeError):
+        interface_tracking_since = 0
     return {"version": version, "day": day, "month": month, "sample_at": max(0, sample_at),
+            "interface_days": interface_days, "interface_tracking_since": interface_tracking_since,
             "devices": devices, "flows": flows, "rates": rates, "boot_id": boot_id.lower(),
             "sampler_id": sampler_id, "interface_last": interface_last}
 
@@ -1855,6 +2191,37 @@ def _wan_usage_inputs(clients, now):
     return ip_to_mac, active_macs
 
 
+def _conntrack_read_command(ip_to_mac):
+    """Filter on the router so local DNS/management flows never cross SSH.
+
+    Both callers set wan_ips from the same interface used for accounting.
+    The full original/reply records are retained for the existing parser.
+    """
+    addresses = []
+    for value in ip_to_mac:
+        try:
+            addresses.append(str(ipaddress.IPv4Address(value)))
+        except (ipaddress.AddressValueError, TypeError):
+            continue
+    if not addresses:
+        return "true"
+    program = """BEGIN {
+        split(clients, parts, " "); for (i in parts) client_ips[parts[i]] = 1;
+        split(wan, parts, /[[:space:]]+/); for (i in parts) wan_addresses[parts[i]] = 1;
+    }
+    $1 == "ipv4" {
+        source = ""; destination = ""; destinations = 0;
+        for (i = 1; i <= NF; i++) {
+            if ($i ~ /^src=/ && source == "") source = substr($i, 5);
+            if ($i ~ /^dst=/ && ++destinations == 2) destination = substr($i, 5);
+        }
+        if (source in client_ips && destination in wan_addresses) print;
+    }"""
+    return (f"awk -v clients={shlex.quote(' '.join(sorted(set(addresses))))} "
+            f'-v wan="$wan_ips" {shlex.quote(program)} '
+            "/proc/net/nf_conntrack 2>/dev/null || true")
+
+
 def _read_wan_flows(ip_to_mac, raw=None):
     """Read NATed IPv4 flows, whose reply destination is the WAN address."""
     if not ip_to_mac:
@@ -1864,11 +2231,11 @@ def _read_wan_flows(ip_to_mac, raw=None):
         rc, raw, _ = ssh(
             "echo @@SAMPLE_AT; date +%s; "
             "echo @@BOOT_ID; cat /proc/sys/kernel/random/boot_id 2>/dev/null || true; "
-            f"echo @@WAN_IPS; ip -4 -o addr show dev {interface} scope global "
-            "| awk '{print $4}' | cut -d/ -f1; "
+            f"wan_ips=\"$(ip -4 -o addr show dev {interface} scope global "
+            "| awk '{print $4}' | cut -d/ -f1)\"; echo @@WAN_IPS; printf '%s\\n' \"$wan_ips\"; "
             f"echo @@WAN_COUNTERS; cat /sys/class/net/{interface}/statistics/rx_bytes; "
             f"cat /sys/class/net/{interface}/statistics/tx_bytes; "
-            "echo @@CONNTRACK; cat /proc/net/nf_conntrack 2>/dev/null || true")
+            "echo @@CONNTRACK; " + _conntrack_read_command(ip_to_mac), telemetry=True)
         if rc != 0:
             return None
     lines = raw.decode(errors="replace").splitlines()
@@ -1935,10 +2302,20 @@ def _wan_usage_snapshot(ip_to_mac, active_macs, at, raw=None):
     sampled = _read_wan_flows(ip_to_mac, raw)
     if sampled is not None and sampled[0]:
         at = sampled[0]
+    # Attribute new deltas at collection time. Moving/deleting a MAC later
+    # must never move or erase bytes already charged to another interface.
+    mac_interfaces = {}
+    for ip, mac in ip_to_mac.items():
+        network = _client_network({"ip": ip})
+        if network and network.get("role") == "LAN":
+            mac_interfaces[mac] = network["device"]
     with _wan_usage_lock:
         if _wan_usage_data is None:
             _wan_usage_data = _load_wan_usage()
         state = _wan_usage_data
+        interface_days = state.setdefault("interface_days", {})
+        if sampled is not None and not state.get("interface_tracking_since"):
+            state["interface_tracking_since"] = at
         history_encoded = None
         # Earlier collectors could have concurrent readers of conntrack and
         # therefore accumulated the same flow more than once. Their totals
@@ -1958,6 +2335,7 @@ def _wan_usage_snapshot(ip_to_mac, active_macs, at, raw=None):
         day_changed = bool(state["day"] and state["day"] != day)
         month_changed = bool(state["month"] and state["month"] != month)
         if day_changed:
+            interface_days.clear()
             for values in devices.values():
                 values["today"] = {"download": 0, "upload": 0}
         if month_changed:
@@ -2030,6 +2408,12 @@ def _wan_usage_snapshot(ip_to_mac, active_macs, at, raw=None):
                                 delta[direction] = capped
                                 devices[mac]["today"][direction] -= correction
                                 devices[mac]["month"][direction] -= correction
+                for mac, delta in deltas.items():
+                    iface = mac_interfaces.get(mac)
+                    if iface:
+                        totals = interface_days.setdefault(iface, {"download": 0, "upload": 0})
+                        for direction in ("download", "upload"):
+                            totals[direction] += delta[direction]
                 if previous_at and 0 < elapsed <= 10:
                     state["rates"] = {mac: {direction: delta[direction] / elapsed
                                              for direction in ("download", "upload")}
@@ -2142,8 +2526,7 @@ def _clean_sqm_conditional_gb(value):
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
-def _load_sqm_conditional():
-    data = _load_json(SQM_CONDITIONAL_FILE, {})
+def _clean_sqm_conditional(data):
     if not isinstance(data, dict):
         data = {}
     try:
@@ -2171,13 +2554,73 @@ def _load_sqm_conditional():
     forced_date = data.get("forced_date", "")
     if not isinstance(forced_date, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", forced_date):
         forced_date = ""
+    baselines = {}
+    for scope, values in (data.get("baselines") or {}).items() if isinstance(data.get("baselines"), dict) else []:
+        if scope in ("lan", "wan") and isinstance(values, dict) and set(values) == {"download", "upload"}:
+            try:
+                clean = {key: int(value) for key, value in values.items()}
+                if all(0 <= value <= PUNISH_CAP_MAX for value in clean.values()):
+                    baselines[scope] = clean
+            except (ValueError, TypeError):
+                pass
+    placement = data.get("placement", "lan" if data.get("active") or baseline else "")
     return {"enabled": data.get("enabled") is True, "threshold_gb": threshold_gb, **rates,
             "active": data.get("active") is True, "baseline": baseline,
+            "placement": placement if placement in ("lan", "wan") else "", "baselines": baselines,
             "forced_date": forced_date, "error": error if isinstance(error, str) else ""}
 
 
-def _save_sqm_conditional(policy):
-    _save_json(SQM_CONDITIONAL_FILE, policy)
+def _sqm_daily_interfaces():
+    rows = _network_state().get("networks", [])
+    interfaces = {row["device"]: row["name"] for row in rows
+                  if row.get("role") == "LAN" and row.get("device") and row.get("subnets")}
+    if not interfaces and not _network_state().get("initialized"):
+        interfaces[_primary_lan_device()] = "LAN"
+    return interfaces
+
+
+def _load_sqm_conditional_store():
+    raw = _load_json(SQM_CONDITIONAL_FILE, {})
+    raw = raw if isinstance(raw, dict) else {}
+    if raw.get("version") == 2:
+        rules = raw.get("rules", {})
+        return {"version": 2, "rules": {iface: _clean_sqm_conditional(policy)
+                for iface, policy in (rules.items() if isinstance(rules, dict) else [])
+                if isinstance(iface, str) and _IFACE_RE.fullmatch(iface)}}
+    # The old shared rule belongs only to the native LAN after migration.
+    return {"version": 2, "rules": {_primary_lan_device(): _clean_sqm_conditional(raw)}}
+
+
+def _load_sqm_conditional(interface=None):
+    return _load_sqm_conditional_store()["rules"].get(interface or _primary_lan_device(),
+                                                   _clean_sqm_conditional({}))
+
+
+def _save_sqm_conditional(policy, interface=None):
+    store = _load_sqm_conditional_store()
+    store["rules"][interface or _primary_lan_device()] = policy
+    _save_json(SQM_CONDITIONAL_FILE, store)
+
+
+def _today_interface_wan_total(interface):
+    day = _traffic_time(time.time()).strftime("%Y-%m-%d")
+    with _wan_usage_lock:
+        state = _wan_usage_data if _wan_usage_data is not None else _load_wan_usage()
+        totals = state.get("interface_days", {}).get(interface, {}) if state.get("day") == day else {}
+        return day, max(0, int(totals.get("download", 0)) + int(totals.get("upload", 0)))
+
+
+def _sqm_conditional_response(interface):
+    store = _load_sqm_conditional_store()
+    interfaces = _sqm_daily_interfaces()
+    # Missing saved targets stay visible and never switch to another queue.
+    names = sorted(set(interfaces) | set(store["rules"]),
+                   key=lambda iface: (iface != _primary_lan_device(), iface))
+    rules = [_sqm_conditional_for_ui(store["rules"].get(iface, _clean_sqm_conditional({})), iface)
+             for iface in names]
+    selected = next((rule for rule in rules if rule["interface"] == interface), None)
+    selected = selected or _sqm_conditional_for_ui(_clean_sqm_conditional({}), interface)
+    return {**selected, "rules": rules, "selected_interface": interface}
 
 
 def _today_wan_traffic_total():
@@ -2194,9 +2637,15 @@ def _today_wan_traffic_total():
     return day, max(0, total)
 
 
-def _sqm_conditional_for_ui(policy):
-    day, today_bytes = _today_wan_traffic_total()
-    return {"enabled": policy["enabled"], "threshold_gb": policy["threshold_gb"],
+def _sqm_conditional_for_ui(policy, interface=None):
+    interface = interface or _primary_lan_device()
+    day, today_bytes = _today_interface_wan_total(interface)
+    with _wan_usage_lock:
+        state = _wan_usage_data if _wan_usage_data is not None else _load_wan_usage()
+        tracking_since = state.get("interface_tracking_since", 0)
+    return {"interface": interface, "network": _sqm_daily_interfaces().get(interface, "Unavailable"),
+            "available": interface in _sqm_daily_interfaces(), "tracking_since": tracking_since,
+            "usage_scope": "interface_wan_ipv4", "enabled": policy["enabled"], "threshold_gb": policy["threshold_gb"],
             "download": _kbits_to_kbytes(policy["download"]),
             "upload": _kbits_to_kbytes(policy["upload"]), "active": policy["active"],
             "forced_today": policy.get("forced_date") == day,
@@ -2205,8 +2654,8 @@ def _sqm_conditional_for_ui(policy):
 
 
 def _get_sqm_rates():
-    rc, out, err = ssh("set -e; uci -q get sqm.@queue[0].enabled; "
-                       "uci -q get sqm.@queue[0].download; uci -q get sqm.@queue[0].upload")
+    rc, out, err = ssh(_primary_sqm_command("set -e; uci -q get sqm.@queue[0].enabled; "
+                       "uci -q get sqm.@queue[0].download; uci -q get sqm.@queue[0].upload"))
     lines = out.decode(errors="replace").splitlines()
     if rc != 0 or len(lines) != 3:
         return None, err or "could not read SQM rates"
@@ -2221,25 +2670,66 @@ def _get_sqm_rates():
     return rates, ""
 
 
-def _set_sqm_rates(rates):
-    """Persist and apply bandwidth only, without restarting SQM."""
+def _restart_sqm(settings=None, interface=None):
+    """Apply a structural change or recover queues using the saved SQM config.
+
+    Caller owns _punishment_tc_lock; retain MAC identities across the reset.
+    """
+    commands = ["cp /etc/config/sqm /etc/config/sqm.manager-bak"]
+    if settings:
+        commands += [f"uci set sqm.@queue[0].{key}={shlex.quote(str(value))}"
+                     for key, value in settings.items()]
+        commands.append("uci commit sqm")
+    commands.append(_sqm_apply_script('"$sqm_primary_iface"', '$(uci -q get sqm.@queue[0].enabled)'))
+    state = _punishment_tc_state(interface)
+    # Also record failed attempts, avoiding repeated disruptive recovery loops.
+    _save_punishment_tc_state({**state, "recovery_at": time.time()}, interface)
+    rc, out, err = ssh(_primary_sqm_command("set -e; " + "; ".join(commands), interface), timeout=30)
+    if rc != 0:
+        error = (out.decode(errors="replace") + err).strip() or "SQM restart failed"
+        _save_punishment_tc_state({**_punishment_tc_state(interface), "error": error}, interface)
+        return False, error
+    _save_punishment_tc_state({**_punishment_tc_state(interface), "active": False,
+                              "interfaces": None, "pending": {}, "error": ""}, interface)
+    return True, ""
+
+
+def _set_sqm_rates(rates, interface=None):
+    """Change compatible bandwidth in place; restart SQM when necessary."""
     try:
         ingress, egress = int(rates["download"]), int(rates["upload"])
-        if not 1 <= ingress <= PUNISH_CAP_MAX or not 1 <= egress <= PUNISH_CAP_MAX:
-            return False, "live SQM changes require positive rates; queues left unchanged"
+        if not 0 <= ingress <= PUNISH_CAP_MAX or not 0 <= egress <= PUNISH_CAP_MAX:
+            return False, "SQM rates are invalid"
     except (KeyError, TypeError, ValueError):
         return False, "SQM rates are invalid"
     with _punishment_tc_lock:
-        interfaces, error = _punishment_interfaces()
+        if not ingress or not egress:
+            return _restart_sqm({"download": ingress, "upload": egress}, interface)
+        interfaces, error = _punishment_interfaces(interface) if interface else _punishment_interfaces()
         if not interfaces:
-            return False, error
+            return _restart_sqm({"download": ingress, "upload": egress}, interface)
+        wan_state = _wan_qos_state()
+        if wan_state.get("installed") and interfaces == wan_state.get("interfaces"):
+            try:
+                wan_layouts = wan_shaping.inspect(ssh, interfaces)
+                if all(layout["qdiscs"].get("root", {}).get("handle") == wan_shaping.MAJOR
+                       for layout in wan_layouts.values()):
+                    # The caller immediately reconciles the shared hierarchy.
+                    # Keep classes/connection marks while changing its rates.
+                    command = _primary_sqm_command(
+                        f"set -e; uci set sqm.@queue[0].download={ingress}; "
+                        f"uci set sqm.@queue[0].upload={egress}; uci commit sqm", interface)
+                    rc, out, error = ssh(command)
+                    return rc == 0, error if rc else ""
+            except (ValueError, KeyError, TypeError):
+                pass
         layouts, error = _inspect_managed_queues(interfaces, allow_cake=True)
         if layouts is None:
-            return False, error
-        lan = interfaces["download"] == TRAFFIC_IFACE
+            return _restart_sqm({"download": ingress, "upload": egress}, interface)
+        lan = interface != WAN_IFACE if interface else interfaces["download"] == _primary_lan_device()
         targets = {"download": egress if lan else ingress, "upload": ingress if lan else egress}
         commands = []
-        state = _punishment_tc_state()
+        state = _punishment_tc_state(interface)
         try:
             for direction, layout in layouts.items():
                 dev, rate = shlex.quote(interfaces[direction]), targets[direction] * 1000
@@ -2267,77 +2757,156 @@ def _set_sqm_rates(rates):
             commands += [f"uci set sqm.@queue[0].download={ingress}",
                          f"uci set sqm.@queue[0].upload={egress}", "uci commit sqm"]
         except (ValueError, KeyError, TypeError) as error:
-            return False, str(error)
-        rc, out, err = ssh("set -e; " + "; ".join(commands), timeout=30)
+            return _restart_sqm({"download": ingress, "upload": egress}, interface)
+        rc, out, err = ssh(_primary_sqm_command("set -e; " + "; ".join(commands), interface), timeout=30)
         if rc != 0:
-            return False, (out.decode(errors="replace") + err).strip() or "live SQM update incomplete; no restart attempted"
+            return _restart_sqm({"download": ingress, "upload": egress}, interface)
     return True, ""
 
 
-def _set_sqm_conditional_baseline(rates):
+def _set_sqm_conditional_baseline(rates, interface=None):
     """Preserve manual SQM edits as the normal rates to restore after the rule."""
     with _sqm_conditional_lock:
-        policy = _load_sqm_conditional()
-        if policy["active"]:
-            policy["baseline"] = dict(rates)
-            _save_sqm_conditional(policy)
+        policy = _load_sqm_conditional(interface)
+        if policy["active"] or policy["baseline"]:
+            if policy.get("placement") == "wan":
+                policy.setdefault("baselines", {})["lan"] = dict(rates)
+            else:
+                policy["baseline"] = dict(rates)
+            _save_sqm_conditional(policy, interface)
 
 
-def _reconcile_sqm_conditional(force=False):
+def _daily_sqm_queue(interface):
+    if interface not in _sqm_daily_interfaces():
+        return None, "LAN interface unavailable: " + interface
+    queues, error = _read_sqm_queues()
+    if error:
+        return None, error
+    matches = [queue for queue in queues if queue.get("interface") == interface]
+    if len(matches) > 1:
+        return None, "Expected one SQM queue for " + interface
+    if not matches or matches[0].get("enabled") != "1":
+        routes, error = _qos_placements(queues)
+        route = routes.get(interface, {})
+        if route.get("placement") == "wan":
+            return {**route["queue"], "qos_placement": "wan"}, ""
+        if not matches:
+            return None, "Expected one SQM queue for " + interface
+        return None, "SQM is disabled on " + interface
+    return matches[0], ""
+
+
+def _daily_sqm_get_rates(interface):
+    queue, error = _daily_sqm_queue(interface)
+    if not queue:
+        return None, error
+    if queue.get("qos_placement") == "wan":
+        return _wan_qos_state().get("daily_rates", {}).get(interface, {"download": 0, "upload": 0}), ""
+    try:
+        rates = {key: int(queue[key]) for key in ("download", "upload")}
+        if any(not 0 <= rate <= PUNISH_CAP_MAX for rate in rates.values()):
+            raise ValueError()
+        return rates, ""
+    except (KeyError, ValueError, TypeError):
+        return None, "Invalid SQM rates on " + interface
+
+
+def _daily_sqm_set_rates(interface, rates):
+    queue, error = _daily_sqm_queue(interface)
+    if not queue:
+        return False, error
+    if queue.get("qos_placement") == "wan":
+        return _refresh_punishment()
+    if interface == _primary_lan_device():
+        return _set_sqm_rates(rates, interface)
+    if queue.get("qdisc") == "cake":
+        return _set_sqm_rates(rates, interface)
+    settings = {"interface": interface, "enabled": "1", **rates}
+    with _punishment_tc_lock:
+        return _save_extra_sqm(queue, settings)
+
+
+def _reconcile_sqm_conditional(force=False, interface=None):
     global _last_sqm_conditional_check
     now = time.monotonic()
-    with _sqm_conditional_lock:
+    with _sqm_settings_lock, _sqm_conditional_lock:
         if not force and now - _last_sqm_conditional_check < SQM_CONDITIONAL_INTERVAL:
             return True, ""
-        _last_sqm_conditional_check = now
-        policy = _load_sqm_conditional()
-        today, today_bytes = _today_wan_traffic_total()
-        threshold_bytes = int(Decimal(policy["threshold_gb"]) * (1024 ** 3))
-        forced_today = policy.get("forced_date") == today
-        should_apply = forced_today or (policy["enabled"] and today_bytes >= threshold_bytes)
-        target = {"download": policy["download"], "upload": policy["upload"]}
-        if should_apply:
-            current, error = _get_sqm_rates()
-            if current is None:
-                policy["error"] = error
-                _save_sqm_conditional(policy)
-                return False, error
-            if not policy["active"]:
-                policy["baseline"] = current
-            if current != target or policy.get("error"):
-                ok, error = _set_sqm_rates(target)
-                if not ok:
-                    policy["error"] = error
-                    _save_sqm_conditional(policy)
-                    return False, error
-            policy["active"] = True
-            policy["error"] = ""
-            _save_sqm_conditional(policy)
-            return True, "daily SQM rule active"
-        if policy["active"]:
-            baseline = policy["baseline"]
-            if set(baseline) != {"download", "upload"}:
-                policy["error"] = "could not restore the normal SQM rates"
-                _save_sqm_conditional(policy)
-                return False, policy["error"]
-            current, error = _get_sqm_rates()
-            if current is None:
-                policy["error"] = error
-                _save_sqm_conditional(policy)
-                return False, error
-            if current != baseline or policy.get("error"):
-                ok, error = _set_sqm_rates(baseline)
-                if not ok:
-                    policy["error"] = error
-                    _save_sqm_conditional(policy)
-                    return False, error
+        if interface is None:
+            _last_sqm_conditional_check = now
+        store = _load_sqm_conditional_store()
+        raw = _load_json(SQM_CONDITIONAL_FILE, {})
+        if not isinstance(raw, dict) or raw.get("version") != 2:
+            _save_json(SQM_CONDITIONAL_FILE, store)
+        interfaces = [interface] if interface else list(store["rules"])
+        errors, messages = [], []
+        for iface in interfaces:
+            policy = _load_sqm_conditional(iface)
+            try:
+                ok, message = _reconcile_sqm_interface(iface, policy)
+            except (subprocess.TimeoutExpired, OSError) as error:
+                message = "SQM operation timed out" if isinstance(error, subprocess.TimeoutExpired) else str(error)
+                policy["error"] = message
+                _save_sqm_conditional(policy, iface)
+                ok = False
+            if not ok:
+                errors.append(iface + ": " + message)
+            elif message:
+                messages.append(iface + ": " + message)
+        return not errors, "; ".join(errors or messages)
+
+
+def _reconcile_sqm_interface(interface, policy):
+    today, today_bytes = _today_interface_wan_total(interface)
+    threshold_bytes = int(Decimal(policy["threshold_gb"]) * (1024 ** 3))
+    forced_today = policy.get("forced_date") == today and policy["enabled"]
+    should_apply = forced_today or (policy["enabled"] and today_bytes >= threshold_bytes)
+    target = {"download": policy["download"], "upload": policy["upload"]}
+    if should_apply or policy["active"] or policy["baseline"]:
+        current, error = _daily_sqm_get_rates(interface)
+        if current is None:
+            policy["error"] = error
+            _save_sqm_conditional(policy, interface)
+            return False, error
+        routes, _ = _qos_placements()
+        scope = "wan" if routes.get(interface, {}).get("placement") == "wan" else "lan"
+        if policy.get("placement") and policy["placement"] != scope:
+            if policy["baseline"]:
+                policy.setdefault("baselines", {})[policy["placement"]] = policy["baseline"]
+            normal = {"download": 0, "upload": 0} if scope == "wan" else current
+            policy["baseline"] = policy.get("baselines", {}).get(scope, normal)
             policy["active"] = False
-            policy["baseline"] = {}
-            policy["forced_date"] = ""
-            policy["error"] = ""
-            _save_sqm_conditional(policy)
-            return True, "normal SQM rates restored"
-        return True, "daily SQM rule waiting" if policy["enabled"] else "daily SQM rule disabled"
+        policy["placement"] = scope
+        if should_apply:
+            if not policy["active"] and not policy["baseline"]:
+                # Another LAN's shared-WAN refresh may already have created
+                # this rule's classes. Normal WAN LAN-parent rates are open.
+                policy["baseline"] = {"download": 0, "upload": 0} if scope == "wan" else current
+            desired = target
+        else:
+            desired = policy["baseline"]
+            if set(desired) != {"download", "upload"}:
+                policy["error"] = "could not restore the normal SQM rates"
+                _save_sqm_conditional(policy, interface)
+                return False, policy["error"]
+        # Persist the restore point before router writes, including partial failures.
+        _save_sqm_conditional(policy, interface)
+        if current != desired or policy.get("error"):
+            ok, error = _daily_sqm_set_rates(interface, desired)
+            if not ok:
+                policy["error"] = error
+                _save_sqm_conditional(policy, interface)
+                return False, error
+        policy.update(active=should_apply, error="")
+        if not should_apply:
+            policy.update(baseline={}, forced_date="")
+            policy.get("baselines", {}).pop(scope, None)
+        _save_sqm_conditional(policy, interface)
+        return True, "daily rule active" if should_apply else "normal SQM rates restored"
+    if policy.get("error") or (policy.get("forced_date") and not forced_today):
+        policy.update(error="", forced_date="")
+        _save_sqm_conditional(policy, interface)
+    return True, "daily rule waiting" if policy["enabled"] else "daily rule disabled"
 
 
 def _clean_loss_pct(value):
@@ -2392,36 +2961,82 @@ def _punishment_policy_snapshot():
         return _load_punishment_policy()
 
 
-def _punishment_tc_state():
+def _punishment_tc_state(interface=None):
     state = _load_json(PUNISH_TC_FILE, {})
-    return state if isinstance(state, dict) else {}
+    state = state if isinstance(state, dict) else {}
+    if interface and interface != _primary_lan_device():
+        return state.get("networks", {}).get(interface, {})
+    return state
+
+
+def _save_punishment_tc_state(state, interface=None):
+    """Retain the native queue's legacy identities and isolate other LANs."""
+    root = _punishment_tc_state()
+    if interface and interface != _primary_lan_device():
+        root = {**root, "version": 3, "networks": {**root.get("networks", {}), interface: state}}
+    else:
+        root = {**state, "version": 3, "networks": root.get("networks", {})}
+    _save_json(PUNISH_TC_FILE, root)
+
+
+def _managed_tc_active(state):
+    return bool(state.get("active") or any(s.get("active") for s in state.get("networks", {}).values()))
+
+
+def _client_tc_interface(client):
+    row = _client_network(client)
+    if row:
+        device = row.get("device", "")
+        if (row.get("eligible") and row.get("role") == "LAN" and
+                row.get("mode") != "unmanaged" and _IFACE_RE.fullmatch(device)):
+            return device
+        return None
+    if not _network_state().get("initialized") and not _client_is_extra_network(client):
+        return _primary_lan_device()
+    return None
 
 
 def _punishment_for_ui(policy):
     tc = _punishment_tc_state()
+    errors = ([f"{_primary_lan_device()}: {tc['error']}"] if tc.get("error") else [])
+    errors += [f"{iface}: {s['error']}" for iface, s in tc.get("networks", {}).items() if s.get("error")]
     return {"delay_ms": policy["delay_ms"], "loss_pct": policy["loss_pct"],
             "download": _kbits_to_kbytes(policy["download"]),
             "upload": _kbits_to_kbytes(policy["upload"]), "punished": len(policy["punished"]),
-            "rate_unit": "KB/s", "tc_active": bool(tc.get("active")),
-            "tc_error": tc.get("error", "")}
+            "rate_unit": "KB/s", "tc_active": _managed_tc_active(tc),
+            "tc_error": "; ".join(errors)}
 
 
-def _punishment_interfaces():
+def _punishment_interfaces(interface=None):
     """Return the configured SQM egress device and its ingress IFB device."""
-    rc, out, err = ssh("uci -q get sqm.@queue[0].interface")
+    if interface and interface not in _sqm_daily_interfaces() and interface != WAN_IFACE:
+        return None, "LAN interface unavailable: " + interface
+    command = "uci -q get sqm.@queue[0].interface"
+    if interface:
+        command += "; uci -q get sqm.@queue[0].enabled; uci -q get sqm.@queue[0].qdisc; "
+        command += f"tc filter show dev {shlex.quote(interface)} parent ffff:"
+    rc, out, err = ssh(_primary_sqm_command(command, interface))
     if rc != 0:
         return None, err or "punishment requires an active SQM queue"
-    sqm_interface = out.decode(errors="replace").strip() or TRAFFIC_IFACE
+    lines = out.decode(errors="replace").splitlines()
+    if interface and (len(lines) < 3 or lines[:3] != [interface, "1", "cake"]):
+        return None, "Client queues require enabled CAKE SQM on " + interface
+    sqm_interface = (lines[0].strip() if lines else "") or TRAFFIC_IFACE
     if not _IFACE_RE.match(sqm_interface):
         return None, "SQM interface is invalid"
-    ifb = PUNISH_IFB or f"ifb4{sqm_interface}"
+    redirects = set(re.findall(r"Redirect to device ([A-Za-z0-9_.-]+)\)", "\n".join(lines[3:]))) if interface else set()
+    if interface and len(redirects) != 1:
+        return None, "SQM ingress IFB unavailable or ambiguous on " + interface
+    ifb = next(iter(redirects)) if interface else PUNISH_IFB or f"ifb4{sqm_interface}"
+    if interface and not ifb.startswith("ifb"):
+        return None, "SQM ingress redirect is not an IFB on " + interface
     if not _IFACE_RE.match(ifb):
         return None, "SQM ingress IFB name is invalid"
     # With SQM on the managed LAN bridge, downloads leave the bridge and
     # uploads are redirected to its IFB. With SQM on a WAN device, the
     # directions are reversed. An explicit PUNISH_IFB override is supported
     # for routers that use a non-standard IFB name.
-    if sqm_interface == TRAFFIC_IFACE:
+    if (interface and interface != WAN_IFACE) or sqm_interface == _primary_lan_device():
         return {"download": sqm_interface, "upload": ifb}, ""
     return {"download": ifb, "upload": sqm_interface}, ""
 
@@ -2591,7 +3206,7 @@ def _managed_tc_clients(clients, policy, limits, blocked, trusted, throttle_caps
             valid_ip = False
         # Include a client while it is at the captive-portal stage too.  This
         # installs its normal CAKE class before an auto-auth session begins.
-        if (mac in blocked or mac in trusted or not valid_ip or
+        if (mac in blocked or mac in trusted or not MAC_RE.fullmatch(mac) or not valid_ip or not _client_tc_interface(client) or
                 client.get("state") not in ("Authenticated", "Preauthenticated")):
             continue
         effective = _effective(mac, limits)
@@ -2606,6 +3221,7 @@ def _managed_tc_clients(clients, policy, limits, blocked, trusted, throttle_caps
         if manual or latency or download_cap or upload_cap:
             desired[mac] = {
                 "ip": ip,
+                "interface": _client_tc_interface(client),
                 "download_cap": download_cap,
                 "upload_cap": upload_cap,
                 "delay_ms": latency + (policy["delay_ms"] if manual else 0),
@@ -2735,7 +3351,7 @@ def _adopt_tc_bindings(state, layouts, desired):
 
 
 def _tc_client_update(interface, layout, binding, profile, direction):
-    """Add/change one leaf without replacing a root or an existing queue type."""
+    """Apply one client leaf, replacing its queue type immediately if needed."""
     dev, minor = shlex.quote(interface), binding["minor"]
     classid, priority = "1:" + minor, binding["priority"]
     leaf = layout["qdiscs"].get(classid)
@@ -2754,14 +3370,6 @@ def _tc_client_update(interface, layout, binding, profile, direction):
         raise ValueError("duplicate client filters; queue left unchanged")
     commands = []
     if leaf and leaf["kind"] != kind:
-        message = "Queue type change pending until the client queue can be drained."
-        if profile.get("session_active", True) and filters:
-            return [], message
-        if filters:
-            return [f"tc filter delete dev {dev} parent 1: protocol ip prio {f['priority']} "
-                    f"handle {f['handle']} u32" for f in filters], message
-        if leaf["backlog"] != 0:
-            return [], message
         commands.append(f"tc qdisc delete dev {dev} parent {classid} handle {leaf['handle']}:")
         leaf = None
     cls = layout["classes"].get(classid)
@@ -2799,20 +3407,79 @@ def _tc_client_update(interface, layout, binding, profile, direction):
     return commands, ""
 
 
-def _apply_punishment_qdisc(policy, desired):
-    """Reconcile leaves in the existing hierarchy; never restart SQM as recovery."""
-    state = _punishment_tc_state()
-    interfaces, error = _punishment_interfaces()
-    layouts = None
-    if interfaces:
-        layouts, error = _inspect_managed_queues(interfaces)
+def _recover_managed_sqm(interface, error):
+    """Recover one configured CAKE queue, including a missing ingress IFB."""
+    if interface and interface not in _sqm_daily_interfaces():
+        return False, "LAN interface unavailable: " + interface
+    command = "; ".join(f"uci -q get sqm.@queue[0].{key}"
+                        for key in ("enabled", "qdisc", "download", "upload"))
+    rc, raw, err = ssh(_primary_sqm_command(command, interface))
+    values = raw.decode(errors="replace").splitlines()
+    if (rc != 0 or len(values) != 4 or values[:2] != ["1", "cake"] or
+            not all(_limit_rate(value) for value in values[2:])):
+        return False, err.strip() or "Client queues require enabled CAKE SQM with positive rates in both directions"
+    if time.time() - _punishment_tc_state(interface).get("recovery_at", 0) < 60:
+        return False, error or "SQM recovery will retry shortly"
+    return _restart_sqm(interface=interface)
+
+
+def _prepare_managed_queues(interfaces, interface=None):
+    """Convert SQM's CAKE roots to the client hierarchy after apply/reboot."""
+    layouts, error = _inspect_managed_queues(interfaces, allow_cake=True)
     if layouts is None:
-        _save_json(PUNISH_TC_FILE, {**state, "error": error,
-                                  "pending": {mac: error for mac in desired}})
+        ok, error = _recover_managed_sqm(interface, error)
+        if not ok:
+            return None, error
+        layouts, error = _inspect_managed_queues(interfaces, allow_cake=True)
+        if layouts is None:
+            return None, error
+    commands = []
+    try:
+        for direction, layout in layouts.items():
+            root = layout["qdiscs"]["root"]
+            if root["kind"] != "cake":
+                continue
+            options = re.sub(r"^root(?: refcnt \d+)? ", "", root["options"])
+            if not re.fullmatch(r"[A-Za-z0-9._:/ -]+", options):
+                raise ValueError("unsupported CAKE parameters")
+            bandwidth = _cake_rate(options)
+            if not bandwidth:
+                raise ValueError("client queues require positive SQM rates in both directions")
+            rate = _rate_bits(bandwidth)
+            if rate <= 0:
+                raise ValueError("client queues require positive SQM rates in both directions")
+            dev = shlex.quote(interfaces[direction])
+            commands += [f"tc qdisc replace dev {dev} root handle 1: htb default 10",
+                         f"tc class add dev {dev} parent 1: classid 1:1 htb rate {rate}bit ceil {rate}bit",
+                         f"tc class add dev {dev} parent 1:1 classid 1:10 htb rate {rate}bit ceil {rate}bit",
+                         f"tc qdisc add dev {dev} parent 1:10 handle 10: cake {options}"]
+    except (ValueError, KeyError, TypeError) as exc:
+        return None, str(exc)
+    if commands:
+        rc, out, err = ssh("set -e; " + "; ".join(commands), timeout=30)
+        if rc != 0:
+            return None, (out.decode(errors="replace") + err).strip() or "client hierarchy update failed"
+        return _inspect_managed_queues(interfaces)
+    return layouts, ""
+
+
+def _apply_punishment_qdisc(policy, desired, interface=None):
+    """Reconcile leaves and rebuild SQM roots when their layout needs it."""
+    state = _punishment_tc_state(interface)
+    interfaces, error = _punishment_interfaces(interface) if interface else _punishment_interfaces()
+    layouts = None
+    if not interfaces and desired:
+        ok, error = _recover_managed_sqm(interface, error)
+        if ok:
+            interfaces, error = _punishment_interfaces(interface) if interface else _punishment_interfaces()
+    if interfaces:
+        layouts, error = _prepare_managed_queues(interfaces, interface)
+    state = _punishment_tc_state(interface)
+    if layouts is None:
+        _save_punishment_tc_state({**state, "error": error,
+                                  "pending": {mac: error for mac in desired}}, interface)
         return False, error
     try:
-        if state.get("interfaces") not in (None, interfaces):
-            raise ValueError("SQM interfaces changed; existing queues left unchanged")
         bindings = _adopt_tc_bindings(state, layouts, desired)
         commands, pending = [], {}
         for mac, binding in bindings.items():
@@ -2845,51 +3512,369 @@ def _apply_punishment_qdisc(policy, desired):
                                      f"tc class delete dev {dev} classid {classid}"]
                     elif not filters and not leaf and classid in layout["classes"]:
                         commands.append(f"tc class delete dev {dev} classid {classid}")
-        next_state = {**state, "active": True, "version": 2, "interfaces": interfaces,
+        next_state = {**state, "active": True, "version": 3, "interfaces": interfaces,
                       "bindings": bindings, "pending": pending, "error": ""}
         # Persist ownership before executing so partial additions remain recoverable.
         if next_state != state:
-            _save_json(PUNISH_TC_FILE, next_state)
+            _save_punishment_tc_state(next_state, interface)
         if commands:
             rc, out, err = ssh("set -e; " + "; ".join(commands), timeout=30)
             if rc != 0:
                 error = (out.decode(errors="replace") + err).strip() or "queue update incomplete"
-                _save_json(PUNISH_TC_FILE, {**next_state, "error": error})
+                _save_punishment_tc_state({**next_state, "error": error}, interface)
                 return False, error
+        verified = layouts
+        if commands:
+            verified, error = _inspect_managed_queues(interfaces)
+            if verified is None:
+                raise ValueError(error or "Client queue verification failed")
+        for mac, profile in desired.items():
+            for direction, match in (("download", "dst"), ("upload", "src")):
+                updates, message = _tc_client_update(interfaces[direction], verified[direction], bindings[mac], profile, match)
+                if updates or message:
+                    pending[mac] = message or "Client queue verification pending"
         try:
             previous = json.loads(state.get("signature", "{}" )).get("clients", {})
         except (ValueError, AttributeError):
             previous = {}
         applied_clients = {mac: previous.get(mac, {}) if mac in pending else profile
                            for mac, profile in desired.items()}
-        next_state.update(clients=sorted(desired), signature=json.dumps(
+        next_state.update(clients=sorted(desired), verified_at=time.time() if not pending else 0, signature=json.dumps(
             {"clients": applied_clients, "interfaces": interfaces}, sort_keys=True))
         if next_state != state:
-            _save_json(PUNISH_TC_FILE, next_state)
+            _save_punishment_tc_state(next_state, interface)
         return True, ("saved; some queue changes remain pending" if pending else "managed queues active")
     except (ValueError, KeyError, TypeError) as exc:
         error = str(exc)
-        _save_json(PUNISH_TC_FILE, {**state, "error": error,
-                                  "pending": {mac: error for mac in desired}})
+        _save_punishment_tc_state({**state, "error": error,
+                                  "pending": {mac: error for mac in desired}}, interface)
         return False, error
 
 
+def _qos_placements(queues=None):
+    if queues is None:
+        queues, error = _read_sqm_queues()
+        if error:
+            return {}, error
+    try:
+        return wan_shaping.placements(queues, _sqm_daily_interfaces(), WAN_IFACE), ""
+    except (TypeError, ValueError):
+        return {}, "Invalid saved SQM rates"
 
-def _reconcile_punishment(policy, limits, clients, blocked, trusted):
+
+def _wan_qos_state():
+    state = _load_json(WAN_QOS_FILE, {})
+    return state if isinstance(state, dict) else {}
+
+
+def _wan_daily_targets(networks):
+    targets = {}
+    for iface in networks:
+        policy = _load_sqm_conditional(iface)
+        day, used = _today_interface_wan_total(iface)
+        reached = used >= int(Decimal(policy["threshold_gb"]) * 1024 ** 3)
+        active = policy["enabled"] and (policy.get("forced_date") == day or reached)
+        targets[iface] = {key: policy[key] if active else 0 for key in ("download", "upload")}
+    return targets
+
+
+def _wan_qos_clients(clients, networks):
+    result, ips = {}, set()
+    for client in clients:
+        mac = str(client.get("mac", "")).lower()
+        lan = _client_tc_interface(client)
+        if lan not in networks or not MAC_RE.fullmatch(mac):
+            continue
+        try:
+            ip = str(ipaddress.IPv4Address(client.get("ip", "")))
+        except (ValueError, ipaddress.AddressValueError):
+            continue
+        if (lan, ip) in ips:
+            raise ValueError("Ambiguous client IPv4 identity on " + lan)
+        ips.add((lan, ip))
+        result[mac] = {"interface": lan, "ip": ip}
+    return result
+
+
+def _wan_qos_cleanup():
+    state = _wan_qos_state()
+    if not state.get("active") and not state.get("installed"):
+        return True, ""
+    dev = state.get("wan", WAN_IFACE)
+    if not _IFACE_RE.fullmatch(dev):
+        return False, "Invalid saved WAN device"
+    # Inspect ownership before deleting anything; never suppress a failed delete.
+    read = (f"tc filter show dev {shlex.quote(dev)} parent ffff:; echo @@NFT; "
+            f"nft list table inet {wan_shaping.TABLE} 2>/dev/null || :")
+    try:
+        rc, out, error = ssh(read)
+        if rc:
+            raise ValueError(error or "WAN cleanup inspection failed")
+        ingress, nft = out.decode(errors="replace").split("@@NFT\n", 1)
+        owned = wan_shaping.ingress_status(ingress)
+        if nft.strip() and not re.search(r'comment "manager-[a-f0-9]+"', nft):
+            raise ValueError("WAN classification table ownership conflict")
+        commands = []
+        if nft.strip():
+            commands.append(f"nft delete table inet {wan_shaping.TABLE}")
+        if owned:
+            commands.append(f"tc filter delete dev {shlex.quote(dev)} parent ffff: protocol ip pref 1 "
+                            f"handle {wan_shaping.HANDLE} u32")
+        if commands:
+            rc, out, error = ssh("set -e; " + "; ".join(commands))
+            if rc:
+                raise ValueError(error or "WAN classification cleanup failed")
+        rc, out, error = ssh(read)
+        remaining_ingress, remaining_nft = out.decode(errors="replace").split("@@NFT\n", 1)
+        if rc or remaining_nft.strip() or wan_shaping.HANDLE in remaining_ingress:
+            raise ValueError(error or "WAN cleanup verification pending")
+    except (ValueError, subprocess.TimeoutExpired, OSError) as exc:
+        error = str(exc)
+        _save_json(WAN_QOS_FILE, {**state, "active": False, "verified_at": 0, "error": error})
+        return False, error
+    # An enabled WAN queue must return to ordinary SQM when all policies move
+    # to LAN. Disabled queues have already been removed by the scoped Apply.
+    queues, error = _read_sqm_queues()
+    if error:
+        return False, error
+    if any(q.get("interface") == dev and q.get("enabled") == "1" for q in queues):
+        ok, error = _restart_sqm(interface=dev)
+        if not ok:
+            return False, error
+    _save_json(WAN_QOS_FILE, {**state, "active": False, "installed": False,
+                            "verified_at": 0, "error": "", "clients": {}})
+    return True, "WAN policies moved to LAN"
+
+
+def _apply_wan_qos(queue, networks, clients, desired):
+    """One owner for all client/LAN classes on the selected WAN queue."""
+    state = _wan_qos_state()
+    try:
+        wan = queue["interface"]
+        if wan != WAN_IFACE or not _IFACE_RE.fullmatch(wan):
+            raise ValueError("WAN shaping requires the configured WAN accounting device")
+        bound = _wan_qos_clients(clients, networks)
+        state = wan_shaping.identities(state, networks, bound)
+        state.update(wan=wan, clients=bound, networks=sorted(networks), installed=True,
+                     active=False, verified_at=0)
+        _save_json(WAN_QOS_FILE, state)
+        rc, output, error = ssh(
+            f"tc filter show dev {shlex.quote(wan)} parent ffff:; "
+            "echo @@OFFLOAD; uci -q get firewall.@defaults[0].flow_offloading || :; "
+            "uci -q get firewall.@defaults[0].flow_offloading_hw || :; "
+            "echo @@CTINFO; test -d /sys/module/act_ctinfo && echo loaded; "
+            f"echo @@NFT; nft list table inet {wan_shaping.TABLE} 2>/dev/null || :")
+        if rc:
+            raise ValueError(error or "WAN classifier inspection failed")
+        text = output.decode(errors="replace")
+        ingress, rest = text.split("@@OFFLOAD\n", 1)
+        offload, rest = rest.split("@@CTINFO\n", 1)
+        dependency, nft = rest.split("@@NFT\n", 1)
+        if "1" in offload.splitlines():
+            raise ValueError("WAN policy shaping requires software/hardware flow offloading disabled in OpenWrt")
+        if nft.strip() and not re.search(r'comment "manager-[a-f0-9]+"', nft):
+            raise ValueError("WAN classification table ownership conflict")
+        redirects = set(re.findall(r"Redirect to device ([A-Za-z0-9_.-]+)\)", ingress))
+        if len(redirects) != 1 or not next(iter(redirects)).startswith("ifb"):
+            # SQM apply/reboot can temporarily lose the ingress redirect.
+            if time.time() - state.get("recovery_at", 0) < 60:
+                raise ValueError("WAN ingress IFB unavailable; recovery will retry")
+            state["recovery_at"] = time.time()
+            _save_json(WAN_QOS_FILE, state)
+            ok, error = _restart_sqm(interface=wan)
+            if not ok:
+                raise ValueError(error)
+            raise ValueError("WAN SQM recovered; client classes will apply on the next control pass")
+        ifb = next(iter(redirects))
+        if not _IFACE_RE.fullmatch(ifb):
+            raise ValueError("Invalid WAN ingress IFB")
+        if "loaded" not in dependency:
+            if time.time() - state.get("dependency_attempt_at", 0) < 60:
+                raise ValueError("WAN conntrack marking unavailable; dependency setup will retry")
+            state["dependency_attempt_at"] = time.time()
+            _save_json(WAN_QOS_FILE, state)
+            rc, out, err = ssh("modprobe act_ctinfo 2>/dev/null || { "
+                "apk add kmod-sched-ctinfo > /tmp/opennds-qos-install.log 2>&1 && modprobe act_ctinfo; }",
+                timeout=60)
+            if rc:
+                raise ValueError("WAN classification requires kmod-sched-ctinfo: " + (err.strip() or "automatic installation failed"))
+        owned_ingress = wan_shaping.ingress_status(ingress)
+        interfaces = {"download": ifb, "upload": wan}
+        totals = {key: int(queue[key]) * 1000 for key in ("download", "upload")}
+        daily_rates = _wan_daily_targets(networks)
+        specs = wan_shaping.nodes(networks, bound, desired, daily_rates, state, totals)
+        layouts = wan_shaping.inspect(ssh, interfaces)
+        try:
+            commands = wan_shaping.plan(interfaces, layouts, specs)
+        except ValueError as exc:
+            if "ownership conflict" in str(exc):
+                raise
+            if time.time() - state.get("recovery_at", 0) < 60:
+                raise
+            state["recovery_at"] = time.time()
+            _save_json(WAN_QOS_FILE, state)
+            ok, error = _restart_sqm(interface=wan)
+            if not ok:
+                raise ValueError(error)
+            layouts = wan_shaping.inspect(ssh, interfaces)
+            commands = wan_shaping.plan(interfaces, layouts, specs)
+        if commands:
+            rc, output, error = ssh("set -e; " + "; ".join(commands), timeout=30)
+            if rc:
+                raise ValueError((output.decode(errors="replace") + error).strip() or "WAN classes incomplete")
+        rules, digest = wan_shaping.nft_rules(wan, networks, bound, state)
+        if "manager-" + digest not in nft:
+            rc, output, error = ssh("nft -f -", data=rules.encode())
+            if rc:
+                raise ValueError((output.decode(errors="replace") + error).strip() or "WAN connection marks incomplete")
+        if not owned_ingress:
+            rc, output, error = ssh(wan_shaping.ingress_command(wan))
+            if rc:
+                raise ValueError((output.decode(errors="replace") + error).strip() or "WAN ingress mark restore failed")
+        # A successful command exit alone is not an Active status.
+        verified = wan_shaping.inspect(ssh, interfaces) if commands else layouts
+        if wan_shaping.plan(interfaces, verified, specs):
+            raise ValueError("WAN queue verification pending")
+        rc, output, error = ssh(f"tc filter show dev {shlex.quote(wan)} parent ffff:; "
+                               f"echo @@NFT; nft list table inet {wan_shaping.TABLE}")
+        if rc:
+            raise ValueError(error or "WAN classification verification failed")
+        check_ingress, check_nft = output.decode(errors="replace").split("@@NFT\n", 1)
+        if not wan_shaping.ingress_status(check_ingress) or "manager-" + digest not in check_nft:
+            raise ValueError("WAN connection-mark verification pending")
+        state.update(active=True, error="", verified_at=time.time(), interfaces=interfaces, daily_rates=daily_rates,
+                     managed_clients=sorted(desired), signature=digest)
+        _save_json(WAN_QOS_FILE, state)
+        return True, "WAN client and LAN policies verified"
+    except (ValueError, KeyError, TypeError, subprocess.TimeoutExpired, OSError) as exc:
+        error = "WAN queue operation timed out" if isinstance(exc, subprocess.TimeoutExpired) else str(exc)
+        _save_json(WAN_QOS_FILE, {**state, "active": False, "verified_at": 0, "error": error})
+        return False, error
+
+
+def _publish_qos_status(queues, routes, desired, error=""):
+    now, rows = time.time(), []
+    wan = _wan_qos_state()
+    root = _punishment_tc_state()
+    for iface, name in _sqm_daily_interfaces().items():
+        route = routes.get(iface, {})
+        scope = route.get("placement", "unavailable")
+        saved = wan if scope == "wan" else root if iface == _primary_lan_device() else root.get("networks", {}).get(iface, {})
+        count = sum(p.get("interface") == iface for p in desired.values())
+        message = error or route.get("error") or saved.get("error", "")
+        verified = saved.get("verified_at", 0)
+        pending = saved.get("pending", {})
+        daily = _load_sqm_conditional(iface)
+        daily_active = (any(wan.get("daily_rates", {}).get(iface, {}).values())
+                        if scope == "wan" else daily.get("active", False))
+        message = message or daily.get("error", "")
+        if scope == "lan" and not count and not message:
+            try:
+                interfaces, reason = _punishment_interfaces(iface)
+                layouts, reason = _inspect_managed_queues(interfaces, allow_cake=True) if interfaces else (None, reason)
+                if layouts is not None:
+                    verified = now
+                    pending = {}
+                else:
+                    message = reason
+            except (subprocess.TimeoutExpired, OSError, ValueError) as exc:
+                message = str(exc)
+        state = "error" if message else "pending" if pending or not verified or now - verified > 15 else "active" if count or daily_active else "ready"
+        rows.append({"interface": iface, "network": name, "placement": scope,
+                     "queue_interface": route.get("queue_interface", ""), "state": state,
+                     "message": message or ("Queue verification pending" if state == "pending" else ""),
+                     "clients": count, "daily_active": bool(daily_active), "verified_at": verified,
+                     "traffic_scope": "IPv4 WAN traffic" if scope == "wan" else "LAN interface traffic"})
+    with _qos_status_lock:
+        global _qos_status_data
+        _qos_status_data = {"checked_at": now, "networks": rows,
+                            "queues": [{"interface": q.get("interface", ""), "enabled": q.get("enabled") == "1"}
+                                       for q in queues], "error": error}
+
+
+@app.route("/api/qos/status")
+@requires_auth
+def qos_status():
+    # Settings polling reads only this cached runtime view; no SSH or drafts.
+    with _qos_status_lock:
+        data = copy.deepcopy(_qos_status_data)
+    age = time.time() - data["checked_at"] if data["checked_at"] else None
+    stale = age is None or age > max(15, AUTOTRUST_INTERVAL * 4)
+    if stale:
+        for row in data["networks"]:
+            row.update(state="unknown", message="Runtime check is stale")
+    return jsonify(ok=True, stale=stale, age=age, **data)
+
+
+def _reconcile_punishment(policy, limits, clients, blocked, trusted, interface=None):
     with _punishment_tc_lock:
         state = _punishment_tc_state()
         clients = list(clients)
-        excluded = set(policy["punished"]) | set(trusted)
+        excluded = set(policy["punished"]) | set(trusted) | set(blocked)
         desired = _managed_tc_clients(clients, policy, limits, blocked, trusted,
                                       _throttle_rate_caps(clients, limits, excluded))
-        if desired:
-            return _apply_punishment_qdisc(policy, desired)
+        groups = {}
+        for mac, profile in desired.items():
+            groups.setdefault(profile["interface"], {})[mac] = profile
+        primary = _primary_lan_device()
+        queues, topology_error = _read_sqm_queues()
+        routes, route_error = _qos_placements(queues)
+        topology_error = topology_error or route_error
+        wan_lans = {iface for iface, route in routes.items() if route.get("placement") == "wan"}
+        if topology_error:
+            _publish_qos_status(queues, routes, desired, topology_error)
+            return False, topology_error
+        targets = set(groups) | {iface for iface, saved in state.get("networks", {}).items()
+                                 if saved.get("active")}
         if state.get("active"):
-            return _apply_punishment_qdisc(policy, {})
-        return True, "no active punished clients"
+            targets.add(primary)
+        if interface is not None and interface != WAN_IFACE and interface not in wan_lans:
+            targets &= {interface}
+        errors, messages, cleanup_error = [], [], ""
+        if wan_lans:
+            rows = {r["device"]: r for r in _network_state().get("networks", [])
+                    if r.get("device") in wan_lans}
+            if wan_lans - set(rows):
+                message = "WAN shaping requires discovered LAN subnets: " + ", ".join(sorted(wan_lans-set(rows)))
+                errors.append(message)
+                _save_json(WAN_QOS_FILE, {**_wan_qos_state(), "active": False,
+                                        "verified_at": 0, "error": message})
+            else:
+                wan_desired = {mac: profile for mac, profile in desired.items() if profile["interface"] in wan_lans}
+                ok, message = _apply_wan_qos(routes[next(iter(wan_lans))]["queue"], rows, clients, wan_desired)
+                (messages if ok else errors).append(message)
+        elif _wan_qos_state().get("installed"):
+            ok, message = _wan_qos_cleanup()
+            (messages if ok else errors).append(message)
+            if not ok:
+                cleanup_error = message
+                _save_json(WAN_QOS_FILE, {**_wan_qos_state(), "active": False,
+                                        "verified_at": 0, "error": message})
+        for iface in sorted(targets, key=lambda name: (name != primary, name)):
+            if iface in wan_lans:
+                # A disabled/removed LAN queue no longer owns these clients.
+                saved = _punishment_tc_state(iface)
+                if saved.get("active") or saved.get("error"):
+                    _save_punishment_tc_state({**saved, "active": False, "error": "", "pending": {},
+                                              "verified_at": 0}, iface)
+                continue
+            try:
+                if iface == primary:
+                    ok, message = _apply_punishment_qdisc(policy, groups.get(iface, {}))
+                else:
+                    ok, message = _apply_punishment_qdisc(policy, groups.get(iface, {}), iface)
+            except (subprocess.TimeoutExpired, OSError) as exc:
+                message = "queue operation timed out" if isinstance(exc, subprocess.TimeoutExpired) else str(exc)
+                saved = _punishment_tc_state(iface)
+                _save_punishment_tc_state({**saved, "error": message,
+                    "pending": {mac: message for mac in groups.get(iface, {})}}, iface)
+                ok = False
+            (messages if ok else errors).append(iface + ": " + message)
+        _publish_qos_status(queues, routes, desired, cleanup_error)
+        return not errors, "; ".join(errors or messages) or "no active managed clients"
 
 
-def _refresh_punishment():
+def _refresh_punishment(interface=None):
     """Refresh the shared hard-cap hierarchy after a policy action."""
     policy = _punishment_policy_snapshot()
     rc, out = ndsctl("json")
@@ -2904,7 +3889,9 @@ def _refresh_punishment():
         _limit_rate(_effective(str(client.get("mac", "")).lower(), limits).get("down", "")) or
         _limit_rate(_effective(str(client.get("mac", "")).lower(), limits).get("up", ""))
         for client in clients)
-    trusted = _trusted_macs() if policy["punished"] or state.get("active") or has_tc_policy else set()
+    trusted = _trusted_macs() if policy["punished"] or _managed_tc_active(state) or has_tc_policy else set()
+    if interface is not None:
+        return _reconcile_punishment(policy, limits, clients, _load_blocked(), trusted, interface)
     return _reconcile_punishment(policy, limits, clients, _load_blocked(), trusted)
 
 
@@ -3040,9 +4027,9 @@ def _prune_usage_periods(data, at):
     data["months"] = {month: data["months"][month] for month in keep_months}
 
 
-def _read_traffic_counters(include_flows=False):
+def _read_traffic_counters(include_flows=False, ip_to_mac=None):
     iface, wan_iface, counter_file = (shlex.quote(value) for value in
-                                      (TRAFFIC_IFACE, WAN_IFACE, WAN_COUNTER_REMOTE))
+                                      (_primary_lan_device(), WAN_IFACE, WAN_COUNTER_REMOTE))
     command = (
         "sample_at=$(date +%s); "
         f"printf '%s\\n' \"$sample_at\"; cat /sys/class/net/{iface}/statistics/rx_bytes; "
@@ -3052,14 +4039,16 @@ def _read_traffic_counters(include_flows=False):
         "printf '%s\\n%s\\n' \"$wan_rx\" \"$wan_tx\"; "
         f"echo @@WAN_COUNTER; cat {counter_file} 2>/dev/null || true")
     if include_flows:
+        if ip_to_mac is None:
+            ip_to_mac, _ = _wan_sampling_inputs()
         command += (
             "; echo @@FLOW_SAMPLE; echo @@SAMPLE_AT; printf '%s\\n' \"$sample_at\"; "
             "echo @@BOOT_ID; cat /proc/sys/kernel/random/boot_id 2>/dev/null || true; "
-            f"echo @@WAN_IPS; ip -4 -o addr show dev {wan_iface} scope global "
-            "| awk '{print $4}' | cut -d/ -f1; echo @@WAN_COUNTERS; "
+            f"wan_ips=\"$(ip -4 -o addr show dev {wan_iface} scope global "
+            "| awk '{print $4}' | cut -d/ -f1)\"; echo @@WAN_IPS; printf '%s\\n' \"$wan_ips\"; echo @@WAN_COUNTERS; "
             "printf '%s\\n%s\\n' \"$wan_rx\" \"$wan_tx\"; "
-            "echo @@CONNTRACK; cat /proc/net/nf_conntrack 2>/dev/null || true")
-    rc, out, _ = ssh(command)
+            "echo @@CONNTRACK; " + _conntrack_read_command(ip_to_mac))
+    rc, out, _ = ssh(command, telemetry=True)
     if rc != 0:
         return None
     counter_raw, _, flow_raw = out.partition(b"@@FLOW_SAMPLE\n")
@@ -3099,10 +4088,11 @@ def _connected_count(data, now):
         clients = (data.get("clients") or {}).values()
     except (AttributeError, TypeError, ValueError):
         return None
+    hidden_ips = _infrastructure_client_ips()
     count = 0
     for client in clients:
         try:
-            if now - int(client.get("last_active", 0)) < ONLINE_SECS:
+            if client.get("ip") not in hidden_ips and now - int(client.get("last_active", 0)) < ONLINE_SECS:
                 count += 1
         except (AttributeError, TypeError, ValueError):
             pass
@@ -3239,334 +4229,12 @@ def _traffic_overview(include_history=False):
         return copy.deepcopy(result)
 
 
-def _normalise_ranked_domain(value):
-    if not isinstance(value, str):
-        return None
-    domain = value.strip().rstrip(".").lower()
-    if not domain or len(domain) > 253 or "." not in domain or \
-            domain in {"status.client", "localhost"} or domain.endswith((".lan", ".local", ".arpa")):
-        return None
-    labels = domain.split(".")
-    if any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label) for label in labels):
-        return None
-    return domain
-
-
-def _clean_domain_details(raw):
-    clean = {}
-    if not isinstance(raw, dict):
-        return clean
-    for root, value in raw.items():
-        root = _normalise_ranked_domain(root)
-        if not root or not isinstance(value, dict):
-            continue
-        try:
-            total = max(0, int(value.get("total", 0)))
-        except (TypeError, ValueError):
-            continue
-        subdomains, clients = {}, {}
-        for name, count in (value.get("subdomains") or {}).items():
-            name = _normalise_ranked_domain(name)
-            try:
-                count = int(count)
-            except (TypeError, ValueError):
-                continue
-            if name and (name == root or name.endswith("." + root)) and count > 0:
-                subdomains[name] = count
-        for name, count in (value.get("clients") or {}).items():
-            try:
-                count = int(count)
-            except (TypeError, ValueError):
-                continue
-            if isinstance(name, str) and name and len(name) <= 253 and count > 0:
-                clients[name] = count
-        if total > 0:
-            clean[root] = {"total": total, "subdomains": subdomains, "clients": clients}
-    return clean
-
-
-def _load_domain_rank_state():
-    raw = _load_json(DOMAIN_RANK_FILE, {})
-    raw = raw if isinstance(raw, dict) else {}
-    buckets = []
-    for bucket in raw.get("buckets", []):
-        if not isinstance(bucket, dict):
-            continue
-        try:
-            at = int(bucket.get("at", 0))
-        except (TypeError, ValueError):
-            continue
-        domains = _clean_domain_details(bucket.get("domains"))
-        if at > 0 and domains:
-            buckets.append({"at": at, "domains": domains})
-    try:
-        offset = max(0, int(raw.get("offset", 0)))
-        refreshed_at = max(0, int(raw.get("refreshed_at", 0)))
-        next_refresh_at = max(0, int(raw.get("next_refresh_at", 0)))
-    except (TypeError, ValueError):
-        offset = refreshed_at = next_refresh_at = 0
-    raw_watched = raw.get("watched", [])
-    raw_watched = raw_watched if isinstance(raw_watched, list) else []
-    watched = sorted({normalised for domain in raw_watched
-                      if (normalised := _normalise_ranked_domain(domain))})[:DOMAIN_WATCH_LIMIT]
-    last_clients = {}
-    for mac, values in (raw.get("last_clients") or {}).items():
-        entries = []
-        for value in values if isinstance(values, list) else []:
-            domain = _normalise_ranked_domain(value.get("domain")) if isinstance(value, dict) else None
-            try:
-                at = int(value.get("at", 0)) if isinstance(value, dict) else 0
-            except (TypeError, ValueError):
-                at = 0
-            if domain and at > 0:
-                entries.append({"domain": domain, "at": at})
-        if MAC_RE.match(str(mac)) and entries:
-            last_clients[str(mac).lower()] = entries[-LAST_DNS_LIMIT:]
-    return {"offset": offset, "refreshed_at": refreshed_at, "next_refresh_at": next_refresh_at,
-            "buckets": buckets, "pending": _clean_domain_details(raw.get("pending")),
-            "watched": watched, "logging_active": raw.get("logging_active", True) is True,
-            "last_clients": last_clients,
-            "client_addresses": {address: mac.lower() for address, mac in
-                                 (raw.get("client_addresses") or {}).items()
-                                 if isinstance(mac, str) and MAC_RE.fullmatch(mac)},
-            "error": raw.get("error", "") if isinstance(raw.get("error"), str) else ""}
-
-
-def _ensure_domain_logging():
-    """Inspect existing logging only; never reload DNS during collection/startup."""
-    rc, out, err = ssh("uci -q get dhcp.@dnsmasq[0].logqueries; "
-                       "uci -q get dhcp.@dnsmasq[0].logfacility")
-    lines = out.decode(errors="replace").splitlines()
-    if rc != 0 or len(lines) != 2 or lines[0].strip() != "1" or lines[1].strip() != DOMAIN_LOG_FILE:
-        return False, "DNS logging is unavailable; existing dnsmasq configuration was left unchanged"
-    return True, ""
-
-
-def _read_domain_log(offset):
-    offset = max(0, int(offset))
-    log_file = shlex.quote(DOMAIN_LOG_FILE)
-    command = (
-        f"log={log_file}; [ -f \"$log\" ] || exit 1; "
-        "now=$(date +%s); size=$(wc -c < \"$log\" 2>/dev/null || echo 0); "
-        f"if [ \"$size\" -lt {offset} ]; then start=0; else start={offset}; fi; "
-        "printf '%s\\n%s\\n' \"$now\" \"$size\"; "
-        "if [ \"$size\" -gt \"$start\" ]; then head -c \"$size\" \"$log\" | tail -c +$((start + 1)); fi; "
-        f"if [ \"$size\" -ge {DOMAIN_LOG_MAX_BYTES} ]; then : > \"$log\"; fi"
-    )
-    rc, out, err = ssh(command, timeout=30)
-    if rc != 0:
-        return None, None, f"could not read DNS query log: {err.strip() or 'router command failed'}"
-    lines = out.decode(errors="replace").splitlines()
-    try:
-        at, size = int(lines[0]), max(0, int(lines[1]))
-    except (IndexError, ValueError):
-        return None, None, "invalid DNS query log response"
-    return at, (0 if size >= DOMAIN_LOG_MAX_BYTES else size, "\n".join(lines[2:])), ""
-
-
-def _dns_clients():
-    # History covers static-address clients and leases with no current hostname.
-    with _history_lock:
-        seen = _load_seen()
-    by_mac = {mac: {"mac": mac, "hostname": value.get("hostname", "")}
-              for mac, value in seen.items()}
-    clients = {value["ip"]: by_mac[mac] for mac, value in seen.items() if value.get("ip")}
-    rc, out, _ = ssh("cat /tmp/dhcp.leases 2>/dev/null; printf '\n@@NEIGH\n'; "
-                     "ip neigh show 2>/dev/null; ip -6 neigh show 2>/dev/null; true")
-    if rc != 0:
-        return clients
-    leases, _, neighbours = out.decode(errors="replace").partition("@@NEIGH")
-    for line in leases.splitlines():
-        fields = line.split()
-        if len(fields) >= 4 and MAC_RE.fullmatch(fields[1]):
-            mac = fields[1].lower()
-            by_mac[mac] = {"mac": mac, "hostname": fields[3] if fields[3] != "*"
-                          else by_mac.get(mac, {}).get("hostname", "")}
-            clients[fields[2]] = by_mac[mac]
-    # IPv6 DNS requests and static IPv4 clients can be identified by neighbours.
-    for line in neighbours.splitlines():
-        fields = line.split()
-        if "lladdr" not in fields:
-            continue
-        index = fields.index("lladdr") + 1
-        if index >= len(fields) or not MAC_RE.fullmatch(fields[index]):
-            continue
-        try:
-            address = str(ipaddress.ip_address(fields[0]))
-        except ValueError:
-            continue
-        mac = fields[index].lower()
-        clients[address] = by_mac.get(mac, {"mac": mac, "hostname": ""})
-    return clients
-
-
-def _domain_counts(log_text, clients, watched):
-    counts = {}
-    for line in log_text.splitlines():
-        match = DNS_QUERY_RE.search(line)
-        if not match:
-            continue
-        domain = _normalise_ranked_domain(match.group(1))
-        try:
-            source = ipaddress.ip_address(match.group(2))
-        except ValueError:
-            continue
-        if not domain or not source.is_private or source.is_loopback:
-            continue
-        matches = [item for item in watched if domain == item or domain.endswith("." + item)]
-        if not matches:
-            continue
-        watched_domain = max(matches, key=len)
-        record = counts.setdefault(watched_domain, {"total": 0, "subdomains": {}, "clients": {}})
-        record["total"] += 1
-        record["subdomains"][domain] = record["subdomains"].get(domain, 0) + 1
-        mac = clients.get(str(source), {}).get("mac", "")
-        identity = mac.lower() if MAC_RE.fullmatch(mac) else str(source)
-        record["clients"][identity] = record["clients"].get(identity, 0) + 1
-    return counts
-
-
-def _last_dns_queries(log_text, clients, at):
-    last = {}
-    for line in log_text.splitlines():
-        match = DNS_QUERY_RE.search(line)
-        if not match:
-            continue
-        domain = _normalise_ranked_domain(match.group(1))
-        client = clients.get(match.group(2))
-        if domain and client and MAC_RE.match(client.get("mac", "")):
-            last.setdefault(client["mac"], []).append({"domain": domain, "at": at})
-    return last
-
-
-def _merge_last_dns(target, updates):
-    for mac, entries in updates.items():
-        merged = list(target.get(mac, []))
-        for entry in entries:
-            merged = [old for old in merged if old["domain"] != entry["domain"]]
-            merged.append(entry)
-        target[mac] = merged[-LAST_DNS_LIMIT:]
-
-
-def _merge_domain_details(target, source):
-    for root, values in source.items():
-        record = target.setdefault(root, {"total": 0, "subdomains": {}, "clients": {}})
-        record["total"] += values["total"]
-        for field in ("subdomains", "clients"):
-            for name, count in values[field].items():
-                record[field][name] = record[field].get(name, 0) + count
-
-
-def _refresh_domain_ranking():
-    global _domain_refresh_at
-    with _domain_refresh_lock:
-        now = time.monotonic()
-        if _domain_refresh_at and now - _domain_refresh_at < 3:
-            return
-        _domain_refresh_at = now
-        _collect_domain_ranking()
-
-
-def _collect_domain_ranking():
-    with _domain_rank_lock:
-        state = _load_domain_rank_state()
-        enabled, error = _ensure_domain_logging()
-        if not enabled:
-            state["error"] = error
-            _save_json(DOMAIN_RANK_FILE, state)
-            return
-        at, result, error = _read_domain_log(state["offset"])
-        if error:
-            state["error"] = error
-            _save_json(DOMAIN_RANK_FILE, state)
-            return
-        offset, log_text = result
-        clients = _dns_clients()
-        state["client_addresses"] = {address: client["mac"] for address, client in clients.items()}
-        _merge_domain_details(state["pending"], _domain_counts(log_text, clients, state["watched"]))
-        _merge_last_dns(state["last_clients"], _last_dns_queries(log_text, clients, at))
-        state["last_clients"] = {mac: [item for item in items if item["at"] >= at - LAST_DNS_RETENTION_SECS]
-                                 for mac, items in state["last_clients"].items()}
-        state["last_clients"] = {mac: items for mac, items in state["last_clients"].items() if items}
-        state["offset"], state["error"], state["logging_active"] = offset, "", True
-        if not state["next_refresh_at"]:
-            state["next_refresh_at"] = at + int(DOMAIN_REFRESH_INTERVAL)
-        if at >= state["next_refresh_at"]:
-            if state["pending"]:
-                state["buckets"].append({"at": at, "domains": state["pending"]})
-                state["pending"] = {}
-            state["refreshed_at"] = at
-            state["next_refresh_at"] = at + int(DOMAIN_REFRESH_INTERVAL)
-        cutoff = at - DOMAIN_WINDOW_SECS
-        state["buckets"] = [bucket for bucket in state["buckets"] if bucket["at"] >= cutoff]
-        _save_json(DOMAIN_RANK_FILE, state)
-
-
-def _domain_client_labels(addresses):
-    """Resolve current names locally, including older hostname/IP count keys."""
-    with _history_lock:
-        seen, names = _load_seen(), _load_client_names()
-    labels = dict(names)
-    aliases = {}
-    known_addresses = {value["ip"]: mac for mac, value in seen.items() if value.get("ip")}
-    known_addresses.update(addresses)
-    for mac, value in seen.items():
-        labels.setdefault(mac, value.get("hostname") or value.get("ip") or mac)
-        if value.get("hostname"):
-            aliases.setdefault(value["hostname"], set()).add(mac)
-    for address, mac in known_addresses.items():
-        labels.setdefault(mac, address)
-        aliases[address] = {mac}
-    # A shared legacy hostname cannot be assigned to a single device reliably.
-    return labels, {alias: next(iter(macs)) for alias, macs in aliases.items() if len(macs) == 1}
-
-
-def _domain_ranking_for_ui():
-    with _domain_rank_lock:
-        state = _load_domain_rank_state()
-    totals = {}
-    cutoff = int(time.time()) - DOMAIN_WINDOW_SECS
-    for bucket in state["buckets"]:
-        if bucket["at"] >= cutoff:
-            _merge_domain_details(totals, bucket["domains"])
-    _merge_domain_details(totals, state["pending"])
-    labels, aliases = _domain_client_labels(state["client_addresses"])
-    rows = []
-    for domain, values in sorted(totals.items(), key=lambda item: (-item[1]["total"], item[0])):
-        client_counts = {}
-        for identity, count in values["clients"].items():
-            mac = identity.lower() if MAC_RE.fullmatch(identity) else aliases.get(identity)
-            name = labels.get(mac, identity)
-            client_counts[name] = client_counts.get(name, 0) + count
-        rows.append({"domain": domain, "queries": values["total"],
-                     "subdomains": [{"name": name, "queries": count} for name, count in
-                                    sorted(values["subdomains"].items(), key=lambda item: (-item[1], item[0]))[:DOMAIN_DETAIL_LIMIT]],
-                     "clients": [{"name": name, "queries": count} for name, count in
-                                 sorted(client_counts.items(), key=lambda item: (-item[1], item[0]))[:DOMAIN_DETAIL_LIMIT]]})
-    return {"domains": rows, "watched": state["watched"],
-            "refreshed_at": state["refreshed_at"], "error": state["error"]}
-
-
-def _last_dns_client_snapshot():
-    with _domain_rank_lock:
-        state = _load_domain_rank_state()
-    return {mac: list(entries) for mac, entries in state["last_clients"].items()}
-
-
-def _domain_ranking_loop():
-    while True:
-        try:
-            _refresh_domain_ranking()
-        except Exception:
-            log.exception("domain ranking error")
-        time.sleep(DOMAIN_LOG_COLLECT_INTERVAL)
-
-
 def _client_snapshot_loop():
     time.sleep(0.5)
     while True:
         started = time.monotonic()
         try:
+            _sync_networks_if_due()
             payload = _collect_clients_snapshot()
             if payload.get("ok") is True:
                 with _clients_cache_lock:
@@ -3643,7 +4311,7 @@ def _traffic_loop():
         sample = None
         try:
             if traffic_due or ip_to_mac:
-                sample = _read_traffic_counters(include_flows=bool(ip_to_mac))
+                sample = _read_traffic_counters(include_flows=bool(ip_to_mac), ip_to_mac=ip_to_mac)
         except Exception:
             log.exception("combined WAN read failed")
         if sample:
@@ -3661,10 +4329,6 @@ def _traffic_loop():
             next_traffic = max(next_traffic + TRAFFIC_INTERVAL, time.monotonic())
         if usage_due:
             next_usage = max(next_usage + WAN_USAGE_INTERVAL, time.monotonic())
-        try:
-            _reconcile_sqm_conditional()
-        except Exception:
-            log.exception("daily SQM rule error")
         time.sleep(max(0.05, min(next_traffic, next_usage) - time.monotonic()))
 
 
@@ -3681,57 +4345,6 @@ def overview():
 @requires_auth
 def overview_history():
     return jsonify(ok=True, **_history_response(_traffic_overview(include_history=True)))
-
-
-@app.route("/api/domains")
-@requires_auth
-def domains():
-    return jsonify(ok=True, **_domain_ranking_for_ui())
-
-
-@app.route("/api/domains/reset", methods=["POST"])
-@requires_auth
-def reset_domain_counts():
-    with _domain_rank_lock:
-        # Skip already logged queries so the next collection cannot replay them.
-        rc, out, err = ssh(f"wc -c < {shlex.quote(DOMAIN_LOG_FILE)}")
-        try:
-            offset = int(out.strip()) if rc == 0 else -1
-        except ValueError:
-            offset = -1
-        if offset < 0:
-            return jsonify(ok=False, output="DNS reset failed: " +
-                           (err.strip() or "could not read DNS log position")), 502
-        state = _load_domain_rank_state()
-        now = int(time.time())
-        state.update({"buckets": [], "pending": {}, "offset": offset,
-                      "refreshed_at": now, "next_refresh_at": now + int(DOMAIN_REFRESH_INTERVAL),
-                      "error": ""})
-        _save_json(DOMAIN_RANK_FILE, state)
-    return jsonify(ok=True, **_domain_ranking_for_ui())
-
-
-@app.route("/api/domains/watch", methods=["PUT"])
-@requires_auth
-def domain_watchlist():
-    body = request.get_json(silent=True)
-    values = body.get("domains") if isinstance(body, dict) else None
-    if not isinstance(values, list) or len(values) > DOMAIN_WATCH_LIMIT:
-        return jsonify(ok=False, output=f"domains must contain at most {DOMAIN_WATCH_LIMIT} domains"), 400
-    watched = set()
-    for value in values:
-        domain = _normalise_ranked_domain(value)
-        if not domain:
-            return jsonify(ok=False, output="invalid domain"), 400
-        watched.add(domain)
-    with _domain_rank_lock:
-        state = _load_domain_rank_state()
-        state.update({"watched": sorted(watched), "buckets": [], "pending": {}, "offset": 0,
-                      "refreshed_at": 0, "next_refresh_at": 0, "error": "",
-                      "logging_active": True})
-        _save_json(DOMAIN_RANK_FILE, state)
-    _refresh_domain_ranking()
-    return jsonify(ok=True, **_domain_ranking_for_ui())
 
 
 def _load_limits():
@@ -3909,7 +4522,55 @@ def _load_mode():
         d = {}
     return {"mode": d.get("mode") if d.get("mode") in MODES else "portal",
             "auto_trusted": [m for m in d.get("auto_trusted", []) if MAC_RE.match(m)],
-            "auto_authed": [m for m in d.get("auto_authed", []) if MAC_RE.match(m)]}
+            "auto_authed": [m for m in d.get("auto_authed", []) if MAC_RE.match(m)],
+            "network_resets": [m for m in d.get("network_resets", []) if MAC_RE.match(m)]}
+
+
+def _client_network(client):
+    try:
+        address = ipaddress.ip_address(client.get("ip") or client.get("clientip", ""))
+    except ValueError:
+        return None
+    rows = _network_state().get("networks", [])
+    return next((row for row in rows if any(address in ipaddress.IPv4Network(n) for n in row["subnets"])), None)
+
+
+def _is_portal_subnet(client):
+    row = _client_network(client)
+    if row:
+        return row["mode"] == "portal"
+    if _network_state().get("initialized"):
+        return False
+    try:
+        address = ipaddress.ip_address(client.get("ip") or client.get("clientip", ""))
+    except ValueError:
+        return False
+    return any(address in network for network in PORTAL_SUBNETS)
+
+
+def _client_mode(client, primary=None):
+    row = _client_network(client)
+    if row:
+        return row["mode"] if row["eligible"] else "unmanaged"
+    if _network_state().get("initialized"):
+        return "unmanaged"
+    return "portal" if _is_portal_subnet(client) else (primary or _load_mode()["mode"])
+
+
+def _client_is_extra_network(client):
+    row = _client_network(client)
+    return not row["primary"] if row else _is_portal_subnet(client)
+
+
+def _primary_lan_device():
+    return _network_state().get("primary_device") or TRAFFIC_IFACE
+
+
+def _cached_client(mac):
+    with _clients_cache_lock:
+        clients = ((_clients_cache_data or {}).get("data") or {}).get("clients") or {}
+        return next((dict(c) for c in clients.values()
+                     if str(c.get("mac", "")).lower() == str(mac).lower()), {})
 
 
 def _save_mode(d):
@@ -3950,15 +4611,16 @@ def _queue_session_refresh(before, after):
         snapshot = _clients_cache_data or {}
         clients = (snapshot.get("_live_clients") or {}).values() if snapshot.get("ok") else ()
     excluded = _load_blocked() | _trusted_macs()
-    if _load_mode()["mode"] != "auto_trust":
-        for client in clients:
-            mac = str(client.get("mac", "")).lower()
-            if (not MAC_RE.fullmatch(mac) or mac in excluded or
-                    client.get("state") != "Authenticated"):
-                continue
-            if _sig(_effective(mac, before)) != _sig(_effective(mac, after)):
-                refresh.setdefault(mac, {"stage": "logout",
-                                         "session_start": str(client.get("session_start", ""))})
+    primary_mode = _load_mode()["mode"]
+    for client in clients:
+        mac = str(client.get("mac", "")).lower()
+        if (not MAC_RE.fullmatch(mac) or mac in excluded or
+                _client_mode(client, primary_mode) == "auto_trust" or
+                client.get("state") != "Authenticated"):
+            continue
+        if _sig(_effective(mac, before)) != _sig(_effective(mac, after)):
+            refresh.setdefault(mac, {"stage": "logout",
+                                     "session_start": str(client.get("session_start", ""))})
     _save_json(SESSION_REFRESH_FILE, refresh)
     return len(refresh)
 
@@ -3975,13 +4637,21 @@ def _session_pending(client, effective, trusted=False, applied=None, tc=None):
             fields = sorted(set(fields) | {key for key, value in zip(LIMIT_KEYS, old)
                                           if value != str(effective.get(key, ""))})
     tc = tc if tc is not None else _punishment_tc_state()
-    tc_message = tc.get("pending", {}).get(mac, "") or tc.get("error", "")
+    interface = _client_tc_interface(client)
+    with _qos_status_lock:
+        runtime = next((row for row in _qos_status_data["networks"] if row["interface"] == interface), {})
+    if interface and interface != _primary_lan_device():
+        tc = tc.get("networks", {}).get(interface, {})
+    if runtime.get("placement") == "wan":
+        tc = _wan_qos_state()
+    tc_message = (tc.get("pending", {}).get(mac, "") or tc.get("error", "")) if interface else ""
+    tc_note = "" if interface else "Client interface unavailable or unmanaged; only openNDS session limits apply."
     refreshing = not trusted and mac in _load_session_refresh()
     return {"limits_pending": bool(fields) or refreshing, "limits_refreshing": refreshing, "limits_pending_fields": fields,
             "limits_pending_message": ("Updating session limits with automatic logout/login; failed logins are retried."
                                        if refreshing else
                                        "Session profile pending until next login; existing openNDS caps still apply."
-                                       if fields else ""), "tc_pending_message": tc_message}
+                                       if fields else ""), "tc_pending_message": tc_message, "tc_note": tc_note}
 
 
 def _control_once():
@@ -4001,13 +4671,9 @@ def _control_once_locked():
         collection_started = (_clients_cache_data or {}).get("_collection_started_at", 0)
         sample_at = (_clients_cache_data or {}).get("sampled_at", 0)
     blocked, trusted = _load_blocked(), _trusted_macs()
-    tc_active = bool(_punishment_tc_state().get("active"))
-    has_tc_policy = any(any(_effective(str(c.get("mac", "")).lower(), lim).get(key)
-                           for key in (LATENCY_KEY, "up", "down")) for c in clients)
-    if punishment_policy["punished"] or has_tc_policy or tc_active:
-        ok, message = _reconcile_punishment(punishment_policy, lim, clients, blocked, trusted)
-        if not ok:
-            log.warning("managed queues pending: %s", message)
+    ok, message = _reconcile_punishment(punishment_policy, lim, clients, blocked, trusted)
+    if not ok:
+        log.warning("managed queues pending: %s", message)
     mode_dirty = applied_dirty = False
     present = set()
     for client in clients:
@@ -4015,13 +4681,40 @@ def _control_once_locked():
         if not MAC_RE.match(mac):
             continue
         present.add(mac)
-        if mac in blocked or mac in trusted or state["mode"] == "auto_trust":
+        client_mode = _client_mode(client, state["mode"])
+        if mac in state["auto_trusted"] and client_mode != "auto_trust":
+            rc, text = ndsctl(f"untrust {mac}")
+            if rc != 0:
+                continue
+            trusted.discard(mac)
+            _set_trusted_macs(trusted)
+            state["auto_trusted"].remove(mac)
+            mode_dirty = True
+            if client_mode == "auto_auth" and client.get("state") == "Authenticated":
+                refresh[mac] = {"stage": "logout", "session_start": str(client.get("session_start", ""))}
+                _save_json(SESSION_REFRESH_FILE, refresh)
+        if mac in state["network_resets"] or (client_mode in ("portal", "unmanaged") and mac in state["auto_authed"]):
+            if mac not in trusted and client.get("state") == "Authenticated":
+                rc, text = ndsctl(f"deauth {mac}")
+                if rc != 0:
+                    continue
+                client = {**client, "state": "Preauthenticated"}
+            if mac in state["network_resets"]:
+                state["network_resets"].remove(mac)
+            if mac in state["auto_authed"]:
+                state["auto_authed"].remove(mac)
+            refresh.pop(mac, None)
+            _save_json(SESSION_REFRESH_FILE, refresh)
+            mode_dirty = True
+        if client_mode == "unmanaged":
+            continue
+        if mac in blocked or mac in trusted or client_mode == "auto_trust":
             if mac in refresh:
                 del refresh[mac]
                 _save_json(SESSION_REFRESH_FILE, refresh)
         if mac in blocked or mac in trusted:
             continue
-        if state["mode"] == "auto_trust":
+        if client_mode == "auto_trust":
             rc, text = ndsctl(f"trust {mac}")
             if rc == 0:
                 _set_trusted_macs(_trusted_macs() | {mac})
@@ -4039,7 +4732,7 @@ def _control_once_locked():
             _auth_attempts.pop(mac, None)
             continue
         if not authenticated and (client.get("state") != "Preauthenticated" or
-                                   (state["mode"] != "auto_auth" and mac not in refresh)):
+                                   (client_mode != "auto_auth" and mac not in refresh)):
             continue
         # Recover a login that completed before a manager restart or returned
         # an ambiguous response, without logging the client out a second time.
@@ -4075,7 +4768,7 @@ def _control_once_locked():
             if mac in refresh:
                 del refresh[mac]
                 _save_json(SESSION_REFRESH_FILE, refresh)
-            if state["mode"] == "auto_auth" and mac not in state["auto_authed"]:
+            if client_mode == "auto_auth" and mac not in state["auto_authed"]:
                 state["auto_authed"].append(mac)
                 mode_dirty = True
     for mac in set(_auth_attempts) - present:
@@ -4092,6 +4785,10 @@ def _auto_trust_loop():
             _control_once()
         except Exception:
             log.exception("control loop error")
+        try:
+            _reconcile_sqm_conditional()
+        except Exception:
+            log.exception("daily SQM rule error")
         time.sleep(AUTOTRUST_INTERVAL)
 
 
@@ -4101,7 +4798,8 @@ def mode():
     if request.method == "GET":
         s = _load_mode()
         return jsonify(ok=True, mode=s["mode"], auto_trusted=len(s["auto_trusted"]),
-                       auto_authed=len(s["auto_authed"]))
+                       auto_authed=len(s["auto_authed"]),
+                       portal_subnets=[n for row in _network_state().get("networks", []) if row["mode"] == "portal" for n in row["subnets"]])
     new = request.get_json(force=True).get("mode")
     if new not in MODES:
         return jsonify(ok=False, output="invalid mode"), 400
@@ -4110,6 +4808,13 @@ def mode():
 
 
 def _change_mode(new):
+    network_state = _network_state()
+    if network_state.get("initialized"):
+        primary = next(r for r in network_state["networks"] if r["primary"])
+        ok, output = _apply_network_modes({primary["name"]: new})
+        if not ok:
+            raise ValueError(output)
+        return
     s = _load_mode()
     old = s["mode"]
     if old == "auto_trust" and new != "auto_trust":
@@ -4214,14 +4919,14 @@ def punishment_policy():
             return jsonify(ok=False, output=f"invalid punishment policy: {error}"), 400
         policy.update(delay_ms=delay, loss_pct=loss_pct, download=download, upload=upload)
         _save_punishment_policy(policy)
-    return jsonify(ok=True, output="saved; compatible queues update live; queue-type changes remain pending",
+    ok, message = _refresh_punishment()
+    return jsonify(ok=ok, output=message,
                    **_punishment_for_ui(policy))
 
 
 threading.Thread(target=_auto_trust_loop, daemon=True, name="auto-trust").start()
 threading.Thread(target=_traffic_loop, daemon=True, name="traffic-sampler").start()
 threading.Thread(target=_client_snapshot_loop, daemon=True, name="client-snapshot").start()
-threading.Thread(target=_domain_ranking_loop, daemon=True, name="domain-ranking").start()
 
 
 if __name__ == "__main__":

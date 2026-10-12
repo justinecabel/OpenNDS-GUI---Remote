@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch, Mock
@@ -18,6 +19,8 @@ with patch('threading.Thread.start') as startup:
     spec = importlib.util.spec_from_file_location('manager', Path(__file__).parents[1] / 'app.py')
     app = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(app)
+
+ORIGINAL_SSH = app.ssh
 
 MAC = '02:00:00:00:00:99'
 SECOND = '02:00:00:00:00:98'
@@ -52,15 +55,16 @@ class OptimizationTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         for name in ('MODE_FILE', 'LIMITS_FILE', 'APPLIED_FILE', 'SESSION_REFRESH_FILE', 'BLOCK_FILE', 'PUNISH_FILE',
                      'PUNISH_TC_FILE', 'THROTTLE_FILE', 'WAN_USAGE_FILE', 'WAN_TRAFFIC_FILE', 'TRAFFIC_FILE',
-                     'CLIENT_WAN_HISTORY_FILE', 'DOMAIN_RANK_FILE', 'FAS_KEY_FILE', 'SEEN_FILE', 'CLIENT_NAMES_FILE'):
+                     'SQM_CONDITIONAL_FILE', 'CLIENT_WAN_HISTORY_FILE', 'FAS_KEY_FILE', 'SEEN_FILE', 'CLIENT_NAMES_FILE', 'NETWORKS_FILE', 'WAN_QOS_FILE'):
             self.patch(name, str(Path(self.tmp.name) / (name + '.json')))
         for name, value in {'_wan_usage_data': None, '_wan_usage_live': {}, '_client_wan_history_data': None,
                             '_client_wan_live_history': {}, '_traffic_data': None, '_wan_traffic_data': None,
                             '_clients_cache_data': None, '_auth_attempts': {}, '_trusted_macs_cache': set(),
-                            '_domain_refresh_at': 0.0}.items():
+                            '_networks_data': None, '_networks_checked_at': 0.0,
+                            '_qos_status_data': {'checked_at': 0, 'networks': [], 'queues': []}}.items():
             self.patch(name, value)
         self.commands = []
-        def fake_ssh(command, data=None, timeout=15):
+        def fake_ssh(command, data=None, timeout=15, *, telemetry=False):
             self.commands.append(command)
             return 0, b'', ''
         self.patch('ssh', Mock(side_effect=fake_ssh))
@@ -389,19 +393,23 @@ class OptimizationTests(unittest.TestCase):
         self.assertNotIn('tc filter', self.commands[-1])
         self.assert_safe()
 
-    def test_active_queue_type_change_is_pending_without_mutation(self):
-        self.tc()
+    def test_active_queue_type_change_applies_with_backlog_without_logout(self):
+        self.tc(backlog=12)
         self.assertTrue(app._apply_punishment_qdisc({}, {MAC: {**PROFILE, 'delay_ms': 100}})[0])
-        self.assertEqual(self.commands, [])
-        self.assertIn(MAC, app._punishment_tc_state()['pending'])
+        self.assertIn('qdisc delete dev br-lan parent 1:100 handle 100:', self.commands[-1])
+        self.assertIn('qdisc add dev br-lan parent 1:100 handle 100: netem', self.commands[-1])
+        self.assertIn('verification pending', app._punishment_tc_state()['pending'][MAC])
+        self.assertNotIn('filter delete', self.commands[-1])
+        self.assertNotIn('root', self.commands[-1])
+        self.assertNotIn('deauth', self.commands[-1])
 
-    def test_inactive_type_change_detaches_then_waits_for_drain(self):
+    def test_inactive_type_change_keeps_existing_filters(self):
         self.tc()
         profile = {**PROFILE, 'delay_ms': 100, 'session_active': False}
         self.assertTrue(app._apply_punishment_qdisc({}, {MAC: profile})[0])
-        self.assertIn('tc filter delete', self.commands[-1])
-        self.assertNotIn('tc qdisc delete', self.commands[-1])
-        self.assert_safe()
+        self.assertIn('tc qdisc add', self.commands[-1])
+        self.assertNotIn('tc filter', self.commands[-1])
+        self.assertIn('tc qdisc delete', self.commands[-1])
 
     def test_drained_inactive_type_change_preserves_class_and_root(self):
         layouts = self.tc(filtered=False)
@@ -412,7 +420,7 @@ class OptimizationTests(unittest.TestCase):
         self.assertIn('tc qdisc delete', commands[0])
         self.assertTrue(any('netem delay 100ms' in command for command in commands))
         self.assertFalse(any('class delete' in command for command in commands))
-        self.assert_safe()
+        self.assertNotIn(' root ', '\n'.join(commands))
 
     def test_drained_detached_queue_can_change_after_next_session_starts(self):
         layouts = self.tc(filtered=False)
@@ -423,7 +431,7 @@ class OptimizationTests(unittest.TestCase):
         self.assertTrue(any('netem delay 100ms' in command for command in commands))
         self.assertLess(next(i for i, c in enumerate(commands) if 'tc qdisc add' in c),
                         next(i for i, c in enumerate(commands) if 'tc filter add' in c))
-        self.assert_safe()
+        self.assertNotIn(' root ', '\n'.join(commands))
 
     def test_departure_detaches_filters_before_drain(self):
         self.tc(backlog=2)
@@ -456,7 +464,9 @@ class OptimizationTests(unittest.TestCase):
         self.tc()
         app._inspect_managed_queues.return_value = (None, 'unsupported root')
         self.assertFalse(app._apply_punishment_qdisc({}, {MAC: PROFILE})[0])
-        self.assertEqual(self.commands, [])
+        self.assertEqual(len(self.commands), 1)
+        self.assertIn('uci -q get sqm."$sqm_primary".enabled', self.commands[0])
+        self.assert_safe()
 
     def test_unknown_class_identity_is_left_unchanged(self):
         layouts = self.tc()
@@ -474,17 +484,92 @@ class OptimizationTests(unittest.TestCase):
         self.assertIn('uci commit sqm', commands)
         self.assert_safe()
 
+    def test_sqm_apply_bootstraps_cake_roots_and_keeps_options_and_bindings(self):
+        managed = self.tc(filtered=False)
+        plain = {direction: app._parse_tc_layout(
+            f'qdisc cake 800a: root refcnt 2 bandwidth {rate} besteffort triple-isolate nat wash rtt 100ms raw overhead 0\n backlog 9b 1p')
+            for direction, rate in [('download', '100Mbit'), ('upload', '30Mbit')]}
+        app._inspect_managed_queues.side_effect = [(plain, ''), (managed, ''), (managed, '')]
+        ok, message = app._apply_punishment_qdisc({}, {MAC: PROFILE})
+        self.assertTrue(ok, message)
+        reset = self.commands[0]
+        self.assertIn('qdisc replace dev br-lan root handle 1: htb default 10', reset)
+        self.assertIn('dev ifb4br-lan parent 1: classid 1:1 htb rate 30000000bit', reset)
+        self.assertIn('cake bandwidth 100Mbit besteffort triple-isolate nat wash rtt 100ms raw overhead 0', reset)
+        self.assertNotIn('refcnt', reset)
+        self.assertNotIn('deauth', reset)
+        self.assertEqual(app._punishment_tc_state()['bindings'][MAC]['minor'], '100')
+        self.assertEqual(app._punishment_tc_state()['error'], '')
+
+    def test_bootstrap_checks_both_directions_before_changing_roots(self):
+        self.tc()
+        plain = {direction: app._parse_tc_layout(
+            f'qdisc cake 800a: root refcnt 2 {options}\n backlog 0b 0p')
+            for direction, options in [('download', 'bandwidth 100Mbit besteffort'),
+                                       ('upload', 'unlimited besteffort')]}
+        app._inspect_managed_queues.return_value = (plain, '')
+        self.assertFalse(app._apply_punishment_qdisc({}, {MAC: PROFILE})[0])
+        self.assertEqual(self.commands, [])
+
+    def test_partial_root_reset_recovers_and_rebuilds(self):
+        managed = self.tc(filtered=False)
+        plain = {direction: app._parse_tc_layout(
+            'qdisc cake 800a: root refcnt 2 bandwidth 100Mbit besteffort\n backlog 0b 0p')
+            for direction in INTERFACES}
+        app._inspect_managed_queues.side_effect = [(None, 'incomplete root'), (plain, ''), (managed, ''), (managed, '')]
+        app.ssh.side_effect = lambda command, **kw: (self.commands.append(command) or
+            (0, b'1\ncake\n100000\n100000\n' if 'uci -q get sqm."$sqm_primary".enabled' in command else b'', ''))
+        ok, message = app._apply_punishment_qdisc({}, {MAC: PROFILE})
+        self.assertTrue(ok, message)
+        self.assertEqual(sum('/usr/lib/sqm/run.sh stop' in c for c in self.commands), 1)
+        self.assertEqual(app._punishment_tc_state()['error'], '')
+
+    def test_failed_root_recovery_has_backoff_and_does_not_claim_success(self):
+        self.tc()
+        app._inspect_managed_queues.return_value = (None, 'broken root')
+        app.ssh.side_effect = lambda command, **kw: (self.commands.append(command) or
+            ((0, b'1\ncake\n100000\n100000\n', '') if 'uci -q get sqm."$sqm_primary".enabled' in command else (1, b'', 'failed')))
+        self.assertFalse(app._apply_punishment_qdisc({}, {MAC: PROFILE})[0])
+        self.assertFalse(app._apply_punishment_qdisc({}, {MAC: PROFILE})[0])
+        self.assertEqual(sum('/usr/lib/sqm/run.sh stop' in c for c in self.commands), 1)
+        self.assertTrue(app._punishment_tc_state()['error'])
+
+    def test_sqm_rate_update_recovers_unusable_layout(self):
+        self.tc()
+        app._inspect_managed_queues.return_value = (None, 'broken root')
+        self.assertTrue(app._set_sqm_rates({'download': 20000, 'upload': 50000})[0])
+        commands = self.commands[-1]
+        self.assertIn('uci set sqm."$sqm_primary".download=20000', commands)
+        self.assertIn('/usr/lib/sqm/run.sh stop', commands)
+        self.assertFalse(app._punishment_tc_state()['active'])
+
+    def test_sqm_structural_apply_restarts_and_immediately_restores_clients(self):
+        current = "sqm.eth1=queue\nsqm.eth1.enabled='1'\nsqm.eth1.interface='br-lan'\nsqm.eth1.qdisc='cake'\nsqm.eth1.script='piece_of_cake.qos'\n"
+        app.ssh.side_effect = lambda command, **kw: (self.commands.append(command) or
+            (0, current.encode() if command == 'uci -q show sqm' else b'', ''))
+        self.patch('_router_interfaces', Mock(return_value=['br-lan','eth2']))
+        self.patch('_reconcile_sqm_conditional', Mock(return_value=(True, '')))
+        refresh = self.patch('_refresh_punishment', Mock(return_value=(True, 'active')))
+        response = self.client.put('/api/sqm', headers=self.headers, json={
+            'enabled': True, 'interface': 'br-lan', 'qdisc': 'cake',
+            'script': 'layer_cake.qos', 'download': 2500, 'upload': 6250})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()['ok'])
+        self.assertIn('script=layer_cake.qos', self.commands[-1])
+        self.assertIn('/usr/lib/sqm/run.sh stop', self.commands[-1])
+        refresh.assert_called_once()
+
     def test_daily_rule_restores_baseline_after_forced_day_ends(self):
         policy = {'enabled': True, 'threshold_gb': '20', 'download': 20000, 'upload': 20000,
                   'active': True, 'baseline': {'download': 30000, 'upload': 100000},
                   'forced_date': '2026-10-06', 'error': ''}
         self.patch('_load_sqm_conditional', Mock(return_value=policy))
-        self.patch('_today_wan_traffic_total', Mock(return_value=('2026-10-07', 0)))
-        self.patch('_get_sqm_rates', Mock(return_value=({'download': 20000, 'upload': 20000}, '')))
-        rates = self.patch('_set_sqm_rates', Mock(return_value=(True, '')))
+        self.patch('_today_interface_wan_total', Mock(return_value=('2026-10-07', 0)))
+        self.patch('_daily_sqm_get_rates', Mock(return_value=({'download': 20000, 'upload': 20000}, '')))
+        rates = self.patch('_daily_sqm_set_rates', Mock(return_value=(True, '')))
         saved = self.patch('_save_sqm_conditional', Mock())
         self.assertTrue(app._reconcile_sqm_conditional(force=True)[0])
-        rates.assert_called_once_with({'download': 30000, 'upload': 100000})
+        rates.assert_called_once_with('br-lan', {'download': 30000, 'upload': 100000})
         self.assertFalse(saved.call_args[0][0]['active'])
 
     def test_daily_rule_retries_prior_partial_failure_even_when_uci_matches(self):
@@ -492,110 +577,14 @@ class OptimizationTests(unittest.TestCase):
                   'active': True, 'baseline': {'download': 30000, 'upload': 100000},
                   'forced_date': '2026-10-07', 'error': 'previous incomplete update'}
         self.patch('_load_sqm_conditional', Mock(return_value=policy))
-        self.patch('_today_wan_traffic_total', Mock(return_value=('2026-10-07', 0)))
-        self.patch('_get_sqm_rates', Mock(return_value=({'download': 20000, 'upload': 20000}, '')))
-        rates = self.patch('_set_sqm_rates', Mock(return_value=(False, 'still incomplete')))
+        self.patch('_today_interface_wan_total', Mock(return_value=('2026-10-07', 0)))
+        self.patch('_daily_sqm_get_rates', Mock(return_value=({'download': 20000, 'upload': 20000}, '')))
+        rates = self.patch('_daily_sqm_set_rates', Mock(return_value=(False, 'still incomplete')))
         saved = self.patch('_save_sqm_conditional', Mock())
         self.assertFalse(app._reconcile_sqm_conditional(force=True)[0])
         self.assertEqual(rates.call_count, 1)
         self.assertEqual(saved.call_args[0][0]['error'], 'still incomplete')
 
-    def test_watchlist_resolves_saved_names_and_legacy_counts_without_router_reads(self):
-        self.state('SEEN_FILE', {MAC: {'ip': '192.168.1.99', 'hostname': 'router-name'}})
-        self.state('CLIENT_NAMES_FILE', {MAC: 'Saved name'})
-        counts = {'example.com': {'total': 10, 'subdomains': {'example.com': 10},
-                                 'clients': {MAC: 1, '192.168.1.99': 2, 'router-name': 3,
-                                             'fd00::99': 4}}}
-        self.state('DOMAIN_RANK_FILE', {'watched': ['example.com'], 'pending': counts,
-                                       'client_addresses': {'fd00::99': MAC}})
-        def rows():
-            response = self.client.get('/api/domains', headers=self.headers)
-            self.assertEqual(response.status_code, 200)
-            domain = response.get_json()['domains'][0]
-            self.assertEqual(domain['queries'], 10)
-            return domain['clients']
-        self.assertEqual(rows(), [{'name': 'Saved name', 'queries': 10}])
-        response = self.client.put('/api/clients/name', headers=self.headers,
-                                   json={'mac': MAC, 'name': 'Renamed'})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(rows(), [{'name': 'Renamed', 'queries': 10}])
-        self.client.put('/api/clients/name', headers=self.headers, json={'mac': MAC, 'name': ''})
-        self.assertEqual(rows(), [{'name': 'router-name', 'queries': 10}])
-        self.assertEqual(app._load_domain_rank_state()['pending'], counts)
-        self.assertEqual(self.commands, [])
-
-    def test_dns_counts_use_mac_for_static_ipv4_and_ipv6_clients(self):
-        self.state('SEEN_FILE', {MAC: {'ip': '192.168.1.99', 'hostname': 'history-name'}})
-        output = (f'0 {SECOND} 192.168.1.98 leased-name *\n@@NEIGH\n'
-                  f'192.168.1.99 dev br-lan lladdr {MAC} REACHABLE\n'
-                  f'fd00::99 dev br-lan lladdr {MAC} STALE\n').encode()
-        self.patch('ssh', Mock(return_value=(0, output, '')))
-        clients = app._dns_clients()
-        self.assertEqual(clients['192.168.1.99']['hostname'], 'history-name')
-        self.assertEqual(clients['192.168.1.98']['hostname'], 'leased-name')
-        log = '\n'.join(f'query[A] example.com from {ip}' for ip in
-                        ('192.168.1.99', 'fd00::99', '192.168.1.98', '192.168.1.77'))
-        self.assertEqual(app._domain_counts(log, clients, ['example.com'])['example.com']['clients'],
-                         {MAC: 2, SECOND: 1, '192.168.1.77': 1})
-        self.assertEqual(set(app._last_dns_queries(log, clients, 100)), {MAC, SECOND})
-
-    def test_watchlist_keeps_unknown_and_ambiguous_legacy_names(self):
-        self.state('SEEN_FILE', {MAC: {'ip': '192.168.1.99', 'hostname': 'shared'},
-                                 SECOND: {'ip': '192.168.1.98', 'hostname': 'shared'}})
-        self.state('CLIENT_NAMES_FILE', {MAC: 'First', SECOND: 'Second'})
-        self.state('DOMAIN_RANK_FILE', {'pending': {'example.com': {
-            'total': 6, 'subdomains': {}, 'clients': {'shared': 1, '192.168.1.77': 2, MAC: 3}}}})
-        self.assertEqual(app._domain_ranking_for_ui()['domains'][0]['clients'],
-                         [{'name': 'First', 'queries': 3}, {'name': '192.168.1.77', 'queries': 2},
-                          {'name': 'shared', 'queries': 1}])
-
-    def test_watchlist_reset_keeps_domains_and_skips_old_logged_queries(self):
-        now = int(time.time())
-        details = {'example.com': {'total': 3, 'subdomains': {'example.com': 3}, 'clients': {MAC: 3}}}
-        self.state('DOMAIN_RANK_FILE', {'watched': ['example.com'], 'pending': details,
-            'buckets': [{'at': now, 'domains': details}], 'offset': 12,
-            'last_clients': {MAC: [{'domain': 'other.example', 'at': now}]},
-            'client_addresses': {'192.168.1.99': MAC}})
-        self.patch('ssh', Mock(return_value=(0, b'1234\n', '')))
-        response = self.client.post('/api/domains/reset', headers=self.headers)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()['watched'], ['example.com'])
-        self.assertEqual(response.get_json()['domains'], [])
-        state = app._load_domain_rank_state()
-        self.assertEqual(state['offset'], 1234)
-        self.assertEqual(state['last_clients'][MAC][0]['domain'], 'other.example')
-        self.assertEqual(state['client_addresses'], {'192.168.1.99': MAC})
-        read_log = self.patch('_read_domain_log', Mock(return_value=(now, (1280,
-            'query[A] example.com from 192.168.1.99'), '')))
-        self.patch('_ensure_domain_logging', Mock(return_value=(True, '')))
-        self.patch('_dns_clients', Mock(return_value={'192.168.1.99': {'mac': MAC}}))
-        app._collect_domain_ranking()
-        read_log.assert_called_once_with(1234)
-        self.assertEqual(app._domain_ranking_for_ui()['domains'][0]['queries'], 1)
-
-    def test_watchlist_reset_failure_preserves_counts_and_requires_auth(self):
-        saved = {'watched': ['example.com'], 'pending': {'example.com': {
-            'total': 3, 'subdomains': {}, 'clients': {MAC: 3}}}, 'offset': 12}
-        self.state('DOMAIN_RANK_FILE', saved)
-        ssh = self.patch('ssh', Mock(return_value=(1, b'', 'router unavailable')))
-        self.assertEqual(self.client.post('/api/domains/reset').status_code, 401)
-        ssh.assert_not_called()
-        for result in ((1, b'', 'router unavailable'), (0, b'invalid', ''), (0, b'-1', '')):
-            ssh.return_value = result
-            response = self.client.post('/api/domains/reset', headers=self.headers)
-            self.assertEqual(response.status_code, 502)
-            self.assertFalse(response.get_json()['ok'])
-            self.assertEqual(app._load_json(app.DOMAIN_RANK_FILE, {}), saved)
-
-    def test_dns_refresh_is_coalesced_across_tabs(self):
-        collector = self.patch('_collect_domain_ranking', Mock())
-        app._refresh_domain_ranking(); app._refresh_domain_ranking()
-        self.assertEqual(collector.call_count, 1)
-
-    def test_missing_dns_configuration_never_reloads_dnsmasq(self):
-        self.assertFalse(app._ensure_domain_logging()[0])
-        self.assert_safe()
-        self.assertNotIn('uci set', '\n'.join(self.commands))
 
     def test_atomic_write_failure_preserves_prior_file(self):
         self.state('WAN_USAGE_FILE', {'old': 1})
@@ -692,25 +681,110 @@ class OptimizationTests(unittest.TestCase):
         raw = b'1800000000\n100\n200\n@@WAN\n300\n400\n@@WAN_COUNTER\ntotal_rx=300\ntotal_tx=400\n@@FLOW_SAMPLE\n@@SAMPLE_AT\n1800000000\n@@BOOT_ID\n12345678-abcd\n@@WAN_IPS\n10.0.0.1\n@@WAN_COUNTERS\n300\n400\n@@CONNTRACK\n'
         app.ssh.side_effect = None
         app.ssh.return_value = (0, raw, '')
-        result = app._read_traffic_counters(include_flows=True)
+        result = app._read_traffic_counters(include_flows=True, ip_to_mac={'192.168.1.99': MAC})
         self.assertEqual(app.ssh.call_count, 1)
+        self.assertTrue(app.ssh.call_args.kwargs['telemetry'])
+        self.assertNotIn('ndsctl', app.ssh.call_args.args[0])
         self.assertEqual(result['wan_rx'], 300)
         parsed = app._read_wan_flows({'192.168.1.99': MAC}, result['flow_raw'])
         self.assertEqual(parsed[0], result['at'])
         self.assertEqual(parsed[2], {'rx': 300, 'tx': 400})
+
+    def test_slow_control_read_does_not_block_telemetry_but_serializes_controls(self):
+        lock = self.patch('_ssh_lock', threading.Lock())
+        self.patch('_telemetry_ssh_lock', threading.Lock())
+        telemetry_done, control_started, control_done = (threading.Event() for _ in range(3))
+        failures = []
+
+        def read(telemetry):
+            if not telemetry:
+                control_started.set()
+            try:
+                ORIGINAL_SSH('true', telemetry=telemetry)
+            except Exception as error:
+                failures.append(error)
+            finally:
+                (telemetry_done if telemetry else control_done).set()
+
+        result = app.subprocess.CompletedProcess([], 0, stdout=b'', stderr=b'')
+        with patch.object(app.subprocess, 'run', return_value=result) as run:
+            lock.acquire()
+            workers = [threading.Thread(target=read, args=(telemetry,)) for telemetry in (False, True)]
+            try:
+                for worker in workers:
+                    worker.start()
+                self.assertTrue(control_started.wait(1))
+                self.assertTrue(telemetry_done.wait(1), 'telemetry waited for a control read')
+                self.assertFalse(control_done.is_set(), 'control commands ran concurrently')
+                self.assertEqual(run.call_count, 1)
+            finally:
+                lock.release()
+                for worker in workers:
+                    worker.join(2)
+            self.assertTrue(control_done.is_set())
+            self.assertEqual(run.call_count, 2)
+            self.assertEqual(failures, [])
+
+    def test_retired_dns_endpoints_have_no_collector_or_router_access(self):
+        routes = {rule.rule for rule in app.app.url_map.iter_rules()}
+        self.assertFalse(any('/domains' in route or route.endswith('/dns') for route in routes))
+        for path, method in [('/api/domains', 'GET'), ('/api/domains/watch', 'PUT'),
+                             ('/api/domains/reset', 'POST'), ('/api/clients/'+MAC+'/dns', 'GET')]:
+            self.assertEqual(self.client.open(path, method=method, headers=self.headers).status_code, 404)
+        self.assertFalse(hasattr(app, '_domain_ranking_loop'))
+        self.assertEqual(self.commands, [])
+
+    def test_router_filter_preserves_client_wan_accounting_and_excludes_local_dns(self):
+        def flow(source, destination, reply_destination, protocol='tcp', port=443):
+            return (f'ipv4 2 {protocol} 6 30 ESTABLISHED src={source} dst={destination} '
+                    f'sport=12345 dport={port} packets=5 bytes=1000 '
+                    f'src={destination} dst={reply_destination} sport={port} dport=12345 '
+                    'packets=10 bytes=2000 [ASSURED] mark=0 zone=0 use=2\n')
+        records = [flow('192.168.1.99', '203.0.113.9', '10.0.0.1'),
+                   flow('192.168.2.98', '203.0.113.8', '10.0.0.2', 'udp', 53),
+                   flow('192.168.1.99', '192.168.1.1', '192.168.1.99', 'udp', 53),
+                   flow('192.168.1.198', '192.168.1.1', '192.168.1.198', 'udp', 53),
+                   flow('10.0.0.1', '10.0.0.254', '10.0.0.1', 'udp', 53),
+                   flow('192.168.0.175', '192.168.1.1', '192.168.0.175', port=22),
+                   flow('192.168.1.199', '203.0.113.9', '10.0.0.1'),
+                   'ipv6 10 udp 17 30 src=fd00::99 dst=fd00::1 packets=1 bytes=80\n']
+        path = Path(self.tmp.name) / 'conntrack'
+        path.write_text(''.join(records))
+        inputs = {'192.168.1.99': MAC, '192.168.2.98': SECOND, '192.168.1.198': '02:00:00:00:00:97'}
+        command = app._conntrack_read_command(inputs).replace('/proc/net/nf_conntrack', app.shlex.quote(str(path)))
+        result = app.subprocess.run(['sh', '-c', 'wan_ips="10.0.0.1\n10.0.0.2"; '+command], capture_output=True, check=True)
+        self.assertEqual(result.stdout.decode(), ''.join(records[:2]))
+        prefix = b'@@SAMPLE_AT\n1800000000\n@@BOOT_ID\n12345678-abcd\n@@WAN_IPS\n10.0.0.1\n10.0.0.2\n@@WAN_COUNTERS\n3000\n4000\n@@CONNTRACK\n'
+        self.assertEqual(app._read_wan_flows(inputs, prefix+result.stdout),
+                         app._read_wan_flows(inputs, prefix+''.join(records).encode()))
+        self.assertEqual(self.commands, [])
+
+    def test_router_filter_skips_empty_or_invalid_addresses_without_shell_interpolation(self):
+        for inputs in ({}, {'$(touch /tmp/unwanted)': MAC}, {'fd00::99': MAC}):
+            self.assertEqual(app._conntrack_read_command(inputs), 'true')
 
     def test_scheduler_has_one_read_for_simultaneously_due_samplers(self):
         self.patch('_wan_sampling_inputs', Mock(return_value=({'192.168.1.99': MAC}, {MAC})))
         read = self.patch('_read_traffic_counters', Mock(return_value={'at': 1800000000, 'flow_raw': b'flows'}))
         traffic = self.patch('_sample_traffic', Mock())
         usage = self.patch('_wan_usage_snapshot', Mock())
-        self.patch('_reconcile_sqm_conditional', Mock())
+        daily = self.patch('_reconcile_sqm_conditional', Mock())
         with patch.object(app.time, 'sleep', side_effect=StopIteration):
             with self.assertRaises(StopIteration):
                 app._traffic_loop()
         self.assertEqual(read.call_count, 1)
         self.assertEqual(traffic.call_count, 1)
         self.assertEqual(usage.call_count, 1)
+        daily.assert_not_called()
+
+    def test_daily_sqm_runs_in_control_loop_even_after_control_failure(self):
+        control = self.patch('_control_once', Mock(side_effect=RuntimeError('control unavailable')))
+        daily = self.patch('_reconcile_sqm_conditional', Mock())
+        with patch.object(app.time, 'sleep', side_effect=StopIteration), self.assertLogs(app.log, level='ERROR'):
+            with self.assertRaises(StopIteration):
+                app._auto_trust_loop()
+        control.assert_called_once()
+        daily.assert_called_once()
 
     def test_overview_snapshot_does_not_change_after_publication(self):
         data = app._wan_traffic_state()
@@ -735,7 +809,7 @@ class OptimizationTests(unittest.TestCase):
         self.patch('_fas_key', lambda: 'test-shared-key')
         self.patch('_refresh_punishment', Mock(return_value=(True, 'queues ready')))
         token = base64.b64encode(f'hid={"a"*64}, clientmac={MAC}, clientip=192.168.1.99, gatewayaddress=192.168.1.1:2050, authdir=/opennds_auth/, originurl=http://example.com/'.encode()).decode()
-        self.patch('ndsctl', Mock(side_effect=[(0, json.dumps({'mac': MAC, 'state': client_state})),
+        self.patch('ndsctl', Mock(side_effect=[(0, json.dumps({'mac': MAC, 'ip': '192.168.1.99', 'state': client_state})),
                                                (0, 'Client authenticated.')]))
         return self.client.get('/fas/continue', query_string={'tok': token})
 

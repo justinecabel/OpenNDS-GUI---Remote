@@ -1,3 +1,5 @@
+DNS monitoring was removed in October 2026. Historical DNS/watchlist checks below are retired. Current coverage keeps client WAN charts and actions, removes every DNS request/view, and verifies the router-side connection filter preserves client WAN accounting. See AGENTS.md section 40 for deployed checks.
+
 # UI QA — 8 October 2026
 
 All nine manager pages and sign-in were checked with Chromium using synthetic data. Every browser API request was intercepted, including writes; router settings were never changed by these checks.

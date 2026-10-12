@@ -1,0 +1,58 @@
+/* Shared type scale for the manager and sign-in, in both themes. Load last. */
+:root {
+  --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  --text-small: 12px;
+  --text-body: 13px;
+  --text-subheading: 14px;
+  --text-heading: 16px;
+  --text-title: 20px;
+  --text-metric: 24px;
+  --chart-font: var(--font-ui);
+  --chart-axis-size: 58;
+}
+
+html[data-theme] body {
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  line-height: 1.45;
+}
+html[data-theme] :is(button,input,select,textarea) {
+  font-family: var(--font-ui);
+  font-size: var(--text-body);
+  line-height: 1.4;
+}
+html[data-theme] :is(input,select,textarea) { font-weight: 400; }
+html[data-theme] :is(.btn,.main-nav .btn-nav,.logout-button,.nav-toggle) {
+  font-size: var(--text-body);
+  line-height: 1.4;
+}
+html[data-theme] .btn-xs { font-size: var(--text-small); }
+html[data-theme] .btn-icon { font-size: 17px; line-height: 1; }
+html[data-theme] :is(td,th) {
+  font-size: var(--text-body);
+  line-height: 1.45;
+}
+
+html[data-theme] :is(h1,h2,h3,h4,h5,h6) { font-weight: 600; line-height: 1.3; }
+html[data-theme] :is(h1,h2,.admin-heading h2,.sqm-heading h2) { font-size: var(--text-title); }
+html[data-theme] :is(h3,.settings-heading h3,.limit-card h3,.sqm-card h3,.admin-card h3) { font-size: var(--text-heading); }
+html[data-theme] :is(h4,h5,h6,.sqm-interface-policy h4,.client-network-heading strong,.sqm-summary-queue strong,.mode-choice .choice-title) { font-size: var(--text-subheading); }
+html[data-theme] .brand h1 { font-size: 18px; letter-spacing: -.4px; }
+html[data-theme] .brand h1 span { font-size: 10px; line-height: 1.3; }
+html[data-theme] .metric-value { font-size: var(--text-metric); font-weight: 600; line-height: 1.3; letter-spacing: -.4px; }
+
+/* Labels and supporting text share a single secondary size. */
+html[data-theme] :is(.admin-field,.limit-field,.sqm-field,.profile-name label,.device-mac,.network-behavior,.chart-heading label,.card label,.theme-control,.metric-label,.traffic-legend,.log-legend,.hint,.admin-card .hint,.limit-card .hint,.sqm-card .hint,.settings-heading .hint,.settings-page details .hint,.sqm-interface-policy > .hint,.admin-note,.sqm-note,.admin-result,.limit-status,.client-note,.client-action-result,.limits-intro,.sqm-summary-error,.manager-dialog p,.client-actions-dialog .dialog-heading p,.wan-usage span,.network-identity small,.network-status,.client-network-heading,.client-network-tab small,.sqm-summary-queue small,.sqm-direction,.mode-choice .choice-description,.mode-choice .choice-meta,.admin-badge,.sub,.error,#overviewnote,#overviewupdated) {
+  font-size: var(--text-small);
+  line-height: 1.45;
+}
+html[data-theme] .card .theme-control label { font-weight: 500; }
+html[data-theme] :is(input,select)::file-selector-button { font-family: var(--font-ui); font-size: var(--text-body); }
+
+/* Technical text uses the same monospace face and size everywhere. */
+html[data-theme] :is(pre,code,kbd,samp,textarea,.config-editor,.status-summary,.admin-output,.portal-guide code,.portal-guide pre,.portal-guide textarea) {
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  line-height: 1.5;
+}

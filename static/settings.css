@@ -1,5 +1,17 @@
 /* Settings sections flow independently; no paired or equal-height panels. */
 .settings-layout { display: block; }
+.sqm-summary-queue { display: grid; grid-template-columns: minmax(0,1fr) repeat(2,minmax(70px,.7fr)); gap: 12px; padding: 10px 0; border-bottom: 1px solid #e0e6eb; }
+.sqm-summary-queue:first-child { padding-top: 0; }
+.sqm-summary-queue > div { min-width: 0; overflow-wrap: anywhere; }
+.sqm-summary-queue :is(strong,small) { display: block; }
+.sqm-summary-queue strong { font-size: 14px; }
+.sqm-summary-queue small { margin: 4px 0; font-size: 12px; }
+.sqm-summary-daily { display: grid; gap: 6px; margin-top: 16px; font-size: 13px; overflow-wrap: anywhere; }
+.sqm-summary-policy { display: grid; gap: 6px; padding: 10px 0; }
+.sqm-summary-error { margin: 8px 0 0; color: #8c2c24; font-size: 13px; overflow-wrap: anywhere; }
+.sqm-summary-error:empty { display: none; }
+html[data-theme=hacker] .sqm-summary-queue { border-color: #2b4c38; }
+html[data-theme=hacker] .sqm-summary-error { color: #f4a5a0; }
 .settings-section {
   display: grid;
   grid-template-columns: 180px minmax(0,1fr);
@@ -46,6 +58,16 @@
 .settings-options .mode-choice > span { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 18px; }
 .settings-options .mode-choice .choice-title { min-width: 90px; margin: 0; font-size: 14px; }
 .settings-options .mode-choice .choice-description { font-size: 12px; }
+.network-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(150px,220px); gap: 20px; align-items: center; padding: 16px 0; border-bottom: 1px solid #e0e6eb; }
+.network-row:first-child { padding-top: 0; }
+.network-identity { min-width: 0; overflow-wrap: anywhere; }
+.network-identity :is(strong,small) { display: block; }
+.network-identity small { margin-top: 5px; font-size: 12px; }
+.network-behavior { display: grid; gap: 5px; min-width: 0; }
+.network-behavior select { width: 100%; box-sizing: border-box; min-height: 40px; padding: 8px 10px; border: 1px solid #b7c9d7; border-radius: 4px; background: #fff; color: #234; font: inherit; }
+.network-status { font-size: 13px; }
+html[data-theme=hacker] .network-row { border-color: #245544; }
+@media (max-width: 600px) { .network-row { grid-template-columns: minmax(0,1fr); gap: 12px; } }
 @media (max-width: 1199px) {
   .settings-page .limit-fields { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .settings-page .admin-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -58,3 +80,14 @@
   .settings-page details .limit-fields { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .settings-page .config-editor { height: 320px; }
 }
+
+/* Each interface keeps its queue and daily policy together. */
+.sqm-summary-interface { padding: 8px 0; border-bottom: 1px solid #e0e6eb; font-size: 13px; }
+.sqm-summary-interface:first-child { padding-top: 0; }
+.sqm-summary-interface .sqm-summary-queue { padding: 0; border: 0; }
+.sqm-summary-interface .sqm-summary-policy { padding: 6px 0 0; }
+#sqm_interface .settings-heading .sqm-field { margin-top: 10px; }
+.sqm-interface-policy h4 { margin: 0 0 6px; font-size: 14px; }
+.sqm-interface-policy > .hint { margin: 4px 0 10px; font-size: 12px; line-height: 1.45; }
+.sqm-interface-policy + .sqm-interface-policy { margin-top: 14px; padding-top: 14px; border-top: 1px solid #e0e6eb; }
+html[data-theme=hacker] :is(.sqm-summary-interface,.sqm-interface-policy) { border-color: #2b4c38; }
