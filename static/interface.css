@@ -5,10 +5,18 @@
 .qos-status-row strong,.qos-status-row small { display: block; overflow-wrap: anywhere; }
 .qos-status-row small { color: var(--ui-muted); }
 .qos-status-message { grid-column: 1 / -1; }
+.qos-status-message summary { color: var(--ui-muted); font-size: 12px; cursor: pointer; }
+.qos-status-message pre { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ui-muted); font-size: 12px; }
 .qos-status-state { padding: 3px 7px; border-radius: 5px; background: var(--ui-soft); color: var(--ui-muted); font-size: 12px; }
 .qos-status-state:is([data-state=active],[data-state=ready]) { background: var(--ui-good-soft); color: var(--ui-good); }
 .qos-status-state[data-state=pending] { background: var(--ui-warning-soft); color: var(--ui-warning); }
 .qos-status-state[data-state=error] { background: var(--ui-danger-soft); color: var(--ui-danger); }
+.ui-spinner,.qos-status-loading::before { display: inline-block; box-sizing: border-box; width: 18px; height: 18px; border: 2px solid var(--ui-border); border-top-color: var(--ui-accent); border-radius: 50%; animation: ui-spin .7s linear infinite; }
+.qos-status-loading::before { content: ''; width: 14px; height: 14px; }
+.qos-status-state.qos-status-loading { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0; background: transparent; }
+.sqm-loading { display: flex; align-items: center; justify-content: center; min-height: 180px; }
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ui-spinner,.qos-status-loading::before { animation: none; } }
 :root {
   --ui-bg: #f5f6f8;
   --ui-surface: #fff;
@@ -125,10 +133,38 @@ html[data-theme] .manager-app #mode .network-behavior option { color: var(--ui-t
 .network-hidden-control input { margin: 0; }
 .network-row[hidden],.network-hidden-control[hidden],.network-visibility-action[hidden] { display: none; }
 .network-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-#sqm_interface[hidden],#sqm_summary[hidden] { display: none; }
+#sqm_interface[hidden],#sqm_summary[hidden],#sqm_add[hidden],#sqm_status_card[hidden],#sqm_content[hidden],#sqm_loading[hidden],#sqm_load_error[hidden] { display: none; }
+.sqm-single-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.sqm-single-title > strong { min-width: 0; overflow-wrap: anywhere; }
+.sqm-single-title .qos-status-state { flex: none; }
+.sqm-single-diagnostics:not(:empty) { margin-block: 6px; }
+html[data-theme] .manager-app #sqm_mode_interface_field[hidden] { display: none; }
 .sqm-list-heading,.sqm-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .sqm-editor-heading > div { min-width: 0; overflow-wrap: anywhere; }
 .sqm-editor-heading > button { flex-shrink: 0; }
+.sqm-summary-policy-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; }
+.sqm-summary-switch { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; color: var(--ui-text); font-weight: 400; }
+html[data-theme] .manager-app .sqm-summary-switch input { appearance: none; box-sizing: border-box; width: 34px; height: 20px; margin: 0; border: 1px solid var(--ui-muted); border-radius: 20px; background: var(--ui-soft); cursor: pointer; }
+.sqm-summary-switch input::before { content: ''; display: block; width: 12px; height: 12px; margin: 3px; border-radius: 50%; background: var(--ui-muted); }
+html[data-theme] .manager-app .sqm-summary-switch input:checked { background: var(--ui-good-soft); border-color: var(--ui-good); }
+.sqm-summary-switch input:checked::before { transform: translateX(14px); background: var(--ui-good); }
+.sqm-summary-switch input:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 3px; }
+.sqm-summary-switch:has(input:disabled) { cursor: default; opacity: .65; }
+.sqm-summary-switch input:disabled { cursor: default; }
+.sqm-summary-switch > span:last-child { min-width: 20px; }
+html[data-theme] .manager-app .sqm-daily-disabled,
+html[data-theme] .manager-app .sqm-daily-disabled :is(h4,strong,.setting-label,.sqm-toggle,.sqm-summary-switch) { color: var(--ui-muted); }
+html[data-theme] .manager-app .sqm-daily-disabled input { color: var(--ui-muted); background: var(--ui-soft); }
+html[data-theme] .manager-app #sqm_interface.sqm-editor-dialog { width: min(760px,calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 0; overflow: hidden; }
+.sqm-editor-dialog[open] { display: flex; flex-direction: column; }
+html[data-theme] .manager-app .sqm-editor-dialog > .settings-heading { flex: 0 0 auto; margin: 0; padding: 16px; border-bottom: 1px solid var(--ui-border); overflow-y: hidden; scrollbar-gutter: stable both-edges; }
+.sqm-editor-dialog > .settings-body { overflow-y: auto; scrollbar-gutter: stable both-edges; overscroll-behavior: contain; min-height: 0; padding: 16px; }
+.sqm-editor-dialog h3 { margin: 0; }
+.sqm-editor-tools { display: grid; grid-template-columns: minmax(0,1fr) auto 84px; align-items: center; gap: 8px; margin-top: 10px; }
+.settings-page .sqm-editor-tools .hint { min-width: 0; max-width: none; margin: 0; }
+.settings-page .sqm-editor-tools select { width: 84px; }
+html:has(.sqm-editor-dialog[open]) { overflow: hidden; }
+@media (pointer: coarse) { .sqm-summary-switch { min-height: 44px; } }
 .sqm-interface-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
 .sqm-add-dialog { max-width: 440px; }
 html[data-theme] .manager-app .sqm-add-dialog .sqm-field { display: flex; flex-direction: column; gap: 6px; }

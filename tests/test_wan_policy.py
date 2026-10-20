@@ -127,6 +127,18 @@ class WanPlannerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             qos.ingress_status(owned + 'filter protocol ip pref 1 u32 fh 800::2\n action mirred')
 
+    def test_ingress_adopts_kernel_allocated_hash_table_without_reusing_sqm_table(self):
+        sqm = 'filter protocol all pref 10 u32 fh 800::800\n action mirred\n'
+        owned = ('filter protocol ip pref 1 u32 fh 803: ht divisor 1\n'
+                 'filter protocol ip pref 1 u32 fh 803::1\n action ctinfo zone 0 continue\n'
+                 ' index 1 cpmark 0xfff00000\n')
+        self.assertEqual(qos.ingress_handle(sqm + owned), '803::1')
+        self.assertTrue(qos.ingress_status(sqm + owned))
+        self.assertIn('handle ::1 u32', qos.ingress_command('eth0'))
+        self.assertNotIn('800::1', qos.ingress_command('eth0'))
+        with self.assertRaises(ValueError):
+            qos.ingress_status(sqm + owned + 'filter protocol ip pref 1 u32 fh 803::2\n action mirred')
+
     def test_kernel_text_parser_recognizes_masked_fw_filters_and_rates(self):
         text = '''qdisc htb 7ea0: root default 0x10
 class htb 7ea0:1 root rate 100Mbit ceil 100Mbit
@@ -253,6 +265,9 @@ class WanRuntimeTests(unittest.TestCase):
         delete = app.ssh.call_args_list[1].args[0]
         self.assertTrue(delete.startswith('set -e; nft delete'))
         self.assertNotIn('|| :', delete)
+        self.assertIn('parent ffff: protocol ip pref 1', delete)
+        self.assertNotIn('handle 800::1', delete)
+        self.assertNotIn('pref 10', delete)
         self.assertNotIn('firewall restart', delete)
         restart.assert_called_once_with(interface='eth0')
         self.assertFalse(app._wan_qos_state()['installed'])

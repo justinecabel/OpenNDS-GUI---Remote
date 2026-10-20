@@ -27,6 +27,9 @@ class TrafficInterfaceTests(unittest.TestCase):
              'role': 'LAN', 'mode': 'portal', 'subnets': ['10.0.0.0/24']},
             {'name': 'wan', 'device': 'eth0', 'primary': False, 'eligible': False,
              'role': 'WAN', 'mode': 'unmanaged', 'subnets': ['192.168.122.0/24']}]})
+        self.patch('_read_sqm_queues', Mock(return_value=([
+            {'section': device, 'interface': device, 'enabled': '1', 'qdisc': 'cake', 'download': '100000', 'upload': '50000'}
+            for device in ('br-lan', 'eth2')], '')))
         self.clients = [{'mac': MAC, 'ip': '192.168.1.99', 'state': 'Authenticated'},
                         {'mac': SECOND, 'ip': '10.0.0.100', 'state': 'Authenticated'}]
 

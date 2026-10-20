@@ -37,6 +37,38 @@ function renderChart(points,rangeSecs,now=10000){
   return {paths,labels};
 }
 (async()=>{
+  const cacheCalls=[],cacheContext={busy:false,sqmViewPromise:null,sqmLoaded:true,sqmRuleLoaded:true,
+    sqmViewWaiting:false,sqmCachePending:false,initSqmUnit(){},renderSqmLoading(){},
+    loadSqmBase:(...args)=>{cacheCalls.push(args);return Promise.resolve();},
+    loadSqmRule:()=>Promise.resolve(),loadQosStatus:()=>Promise.resolve()};
+  vm.createContext(cacheContext);
+  vm.runInContext(full.slice(full.indexOf('function loadSqmView('),full.indexOf('async function loadSqmBase('))+full.slice(full.indexOf('async function loadSqmStatus('),full.indexOf('// Poll only read-only tabs;')),cacheContext);
+  await vm.runInContext('loadSqmForNavigation()',cacheContext);
+  assert.deepEqual(cacheCalls.pop(),[true,true,false],'navigation must use the cached settings endpoint');
+  await vm.runInContext('loadSqm()',cacheContext);
+  assert.deepEqual(cacheCalls.pop(),[false,false,true],'explicit Reload must request real router settings');
+  await vm.runInContext('loadSqmStatus()',cacheContext);
+  assert.equal(cacheCalls.length,0,'ordinary status polling must not touch settings drafts');
+  await vm.runInContext('sqmCachePending=true;loadSqmStatus()',cacheContext);
+  assert.deepEqual(cacheCalls.pop(),[true,true,false],'pending snapshots retry cheaply while preserving drafts');
+  console.log('PASS: SQM navigation uses cache; Reload verifies router; cold snapshots retry without clobbering drafts');
+  const badgeSource=full.slice(full.indexOf('function renderQosBadge('),full.indexOf('function renderSqmSingleStatus('));
+  const badgeClasses=new Set(),badgeAttributes={},badge={dataset:{},textContent:'Active',
+    classList:{toggle:(name,on)=>on?badgeClasses.add(name):badgeClasses.delete(name)},
+    setAttribute:(name,value)=>badgeAttributes[name]=value};
+  const badgeContext={badge};vm.createContext(badgeContext);vm.runInContext(badgeSource,badgeContext);
+  for(const state of ['unknown','pending']){
+    vm.runInContext(`renderQosBadge(badge,'${state}')`,badgeContext);
+    assert.equal(badge.textContent,'');assert.ok(badgeClasses.has('qos-status-loading'));
+    assert.equal(badgeAttributes['aria-busy'],'true');assert.equal(badgeAttributes['aria-label'],'Loading status');
+  }
+  vm.runInContext("renderQosBadge(badge,'unknown',true)",badgeContext);
+  assert.equal(badge.textContent,'Unavailable');assert.ok(!badgeClasses.has('qos-status-loading'));
+  for(const [state,label] of [['active','Active'],['ready','Active'],['off','Off'],['error','Error']]){
+    vm.runInContext(`renderQosBadge(badge,'${state}')`,badgeContext);assert.equal(badge.textContent,label);
+    assert.equal(badgeAttributes['aria-busy'],'false');assert.ok(!badgeClasses.has('qos-status-loading'));
+  }
+  console.log('PASS: unverified status uses a circular loader; real failures never display Active');
   const oldPoints=[{at:6000,download:100,upload:50},{at:6060,download:200,upload:70}];
   let graph=renderChart(oldPoints,60);
   assert.equal(graph.paths.length,0,'offline activity from an hour ago must not appear in the last minute');
@@ -54,6 +86,20 @@ function renderChart(points,rangeSecs,now=10000){
   assert.ok(renderChart([{at:9995,download:null,upload:null}],60).labels.includes('No samples in this range'));
   assert.ok(renderChart([{at:9990,download:42,upload:0}],60,10060).labels.includes('No samples in this range'),'unchanged history must age out as time advances');
   console.log('PASS: charts anchor to current time, preserve old positions, and show empty ranges without inventing activity');
+
+  const overviewAppend=full.slice(full.indexOf('function appendOverviewSample('),full.indexOf('function mergeHistory('));
+  const overviewContext={overviewHistoryLoaded:true,overviewData:{history:[]},drawTraffic(){}};
+  vm.createContext(overviewContext);vm.runInContext(overviewAppend,overviewContext);
+  vm.runInContext('appendOverviewSample({updated_at:100,live:{download:null,upload:null}})',overviewContext);
+  assert.equal(overviewContext.overviewData.history[0].download,null,'a baseline is a gap, not zero traffic');
+  vm.runInContext('appendOverviewSample({updated_at:101,live:{download:0,upload:0}})',overviewContext);
+  assert.equal(overviewContext.overviewData.history[1].download,0,'confirmed idle clients record actual zero');
+  vm.runInContext('appendOverviewSample({updated_at:102,live:{download:42,upload:21}})',overviewContext);
+  vm.runInContext('appendOverviewSample({updated_at:102,stale:true,live:{download:null,upload:null}})',overviewContext);
+  assert.equal(overviewContext.overviewData.history[2].download,42,'an aging sample must retain its recorded history');
+  vm.runInContext('appendOverviewSample({updated_at:103,stale:true,live:{download:null,upload:null}})',overviewContext);
+  assert.equal(overviewContext.overviewData.history[3].download,null,'a new failed interval remains a gap');
+  console.log('PASS: Overview distinguishes unavailable samples from idle clients and preserves recorded history');
 
   let f=fixture();
   const first=f.run('loadClientHistory()'),duplicate=f.run('loadClientHistory()');

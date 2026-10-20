@@ -15,7 +15,8 @@ MAJOR = '7ea0'
 MASK = 0xfff00000
 KEEP = 0x000fffff
 PREF = 1
-HANDLE = '800::1'
+# Let u32 select this priority's hash table; SQM may already own 800:.
+HANDLE = '::1'
 TABLE = 'nds_mgr_wan_qos'
 IFACE = re.compile(r'[A-Za-z0-9_.-]{1,15}\Z')
 MAC = re.compile(r'(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\Z')
@@ -255,18 +256,25 @@ def plan(interfaces, layouts, specs):
     return commands
 
 
-def ingress_status(text):
+def ingress_handle(text):
     # Other rules at pref 1 would prevent reliable ctinfo-before-redirect ordering.
     rows = [row for row in text.splitlines() if re.search(r'\bpref 1\b', row)]
     sections = re.split(r'(?=^filter )', text, flags=re.M)
-    owned = any(re.search(r'\bpref 1\b', part) and HANDLE in part and
-                'ctinfo' in part and hex(MASK) in part for part in sections)
+    handles = {match[1] for part in sections
+               if re.search(r'\bpref 1\b', part) and 'ctinfo' in part and hex(MASK) in part
+               for match in [re.search(r'\bfh ([0-9a-f]+::1)(?:\s|$)', part)] if match}
+    handle = next(iter(handles)) if len(handles) == 1 else None
+    allowed = {handle, handle.split('::')[0] + ':'} if handle else set()
     foreign = any(' u32 ' not in row + ' ' or
-                  (' fh ' in row and not re.search(r'\bfh (?:800:|800::1)(?:\s|$)', row))
+                  (' fh ' in row and re.search(r'\bfh (\S+)', row)[1] not in allowed)
                   for row in rows)
-    if rows and (not owned or foreign):
+    if rows and (not handle or foreign):
         raise ValueError('WAN ingress priority 1 is already in use; classification left unchanged')
-    return owned
+    return handle
+
+
+def ingress_status(text):
+    return bool(ingress_handle(text))
 
 
 def ingress_command(wan):

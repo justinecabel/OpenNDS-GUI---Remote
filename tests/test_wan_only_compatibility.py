@@ -148,18 +148,18 @@ tc() { case "$*" in 'filter show dev eth0 parent ffff:') printf 'Redirect to dev
         app._save_json(app.WAN_QOS_FILE, {**state, 'daily_rates': app._wan_daily_targets(['br-lan', 'eth2'])})
         return True, 'verified'
 
-    def test_daily_rules_use_wan_classes_when_lan_queues_are_disabled(self):
+    def test_daily_rules_turn_off_when_own_baseline_is_disabled(self):
         self.force_daily_rules()
         self.patch('_refresh_punishment', Mock(side_effect=self.simulate_wan_refresh))
         ok, message = app._reconcile_sqm_conditional(force=True)
         self.assertTrue(ok, message)
         for interface in ('br-lan', 'eth2'):
-            self.assertTrue(app._load_sqm_conditional(interface)['active'])
-            self.assertEqual(app._load_sqm_conditional(interface)['placement'], 'wan')
-            self.assertEqual(app._load_sqm_conditional(interface)['baseline'], {'download': 0, 'upload': 0})
+            self.assertFalse(app._load_sqm_conditional(interface)['active'])
+            self.assertFalse(app._load_sqm_conditional(interface)['enabled'])
+            self.assertEqual(app._load_sqm_conditional(interface)['forced_date'], '')
         self.assertEqual(self.commands, [])
 
-    def test_daily_rules_follow_wan_after_removal_and_restore_at_midnight(self):
+    def test_daily_rules_turn_off_after_own_queue_removal(self):
         self.remove_lan_queues()
         self.force_daily_rules()
         self.patch('_refresh_punishment', Mock(side_effect=self.simulate_wan_refresh))
@@ -168,14 +168,15 @@ tc() { case "$*" in 'filter show dev eth0 parent ffff:') printf 'Redirect to dev
             self.assertTrue(app._reconcile_sqm_conditional(force=True)[0])
         for interface in ('br-lan', 'eth2'):
             self.assertFalse(app._load_sqm_conditional(interface)['active'])
-            self.assertEqual(app._wan_qos_state()['daily_rates'][interface], {'download': 0, 'upload': 0})
+            self.assertFalse(app._load_sqm_conditional(interface)['enabled'])
         self.assertEqual(self.commands, [])
 
-    def test_daily_rule_api_rejects_wan_target(self):
+    def test_daily_rule_api_accepts_shared_wan_target(self):
         response = self.client.put('/api/sqm/conditional', headers=self.headers,
             json={'interface': 'eth0', 'enabled': True, 'threshold_gb': '1', 'download': 1000, 'upload': 500})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('LAN interface', response.get_json()['output'])
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertEqual(response.get_json()['usage_scope'], 'all_wan')
+        self.assertTrue(app._load_sqm_conditional('eth0')['enabled'])
         self.assertEqual(self.commands, [])
 
     def test_wan_aggregate_rate_commands_keep_correct_download_upload_directions(self):
@@ -237,62 +238,35 @@ class WanDailyTransitionTests(unittest.TestCase):
     fixture_ssh = WanOnlyCompatibilityTests.fixture_ssh
     force_daily_rules = WanOnlyCompatibilityTests.force_daily_rules
 
-    def test_lan_wan_mixed_lan_transitions_preserve_independent_restore_points_after_failure(self):
+    def test_disabling_baselines_clears_daily_and_reenable_restores_normal_rates(self):
         originals = {}
         for index, queue in enumerate(self.configs[:2]):
             queue.update(enabled='1', download=str(100000-index*50000), upload=str(80000-index*40000))
             originals[queue['interface']] = {key: int(queue[key]) for key in ('download', 'upload')}
         self.force_daily_rules()
-        failed = False
         calls = []
         def apply(iface, rates):
-            nonlocal failed
             calls.append((iface, dict(rates)))
-            routes, _ = app._qos_placements()
-            if routes[iface]['placement'] == 'wan':
-                if failed:
-                    return False, 'simulated partial WAN failure'
-                store = app._wan_qos_state()
-                app._save_json(app.WAN_QOS_FILE, {**store, 'daily_rates': app._wan_daily_targets(
-                    [name for name, route in routes.items() if route['placement'] == 'wan'])})
-            else:
-                next(q for q in self.configs if q['interface'] == iface).update({key: str(value) for key,value in rates.items()})
+            next(q for q in self.configs if q['interface'] == iface).update({key: str(value) for key,value in rates.items()})
             return True, ''
         self.patch('_daily_sqm_set_rates', Mock(side_effect=apply))
         self.assertTrue(app._reconcile_sqm_conditional(force=True)[0])
-        for iface in originals:
-            self.assertEqual(app._load_sqm_conditional(iface)['baseline'], originals[iface])
         for queue in self.configs[:2]:
             queue['enabled'] = '0'
-        failed = True
-        self.assertFalse(app._reconcile_sqm_conditional(force=True)[0])
+        self.assertTrue(app._reconcile_sqm_conditional(force=True)[0])
         for iface in originals:
             rule = app._load_sqm_conditional(iface)
-            self.assertEqual(rule['baselines']['lan'], originals[iface])
-            self.assertEqual(rule['baseline'], {'download': 0, 'upload': 0})
-            self.assertIn('partial WAN failure', rule['error'])
-        failed = False
+            self.assertFalse(rule['enabled'])
+            self.assertFalse(rule['active'])
+            self.assertEqual(rule['baseline'], originals[iface])
+            self.assertEqual(rule['forced_date'], '')
+        for queue in self.configs[:2]:
+            queue['enabled'] = '1'
         self.assertTrue(app._reconcile_sqm_conditional(force=True)[0])
-        updated = {'download': 120000, 'upload': 90000}
-        app._set_sqm_conditional_baseline(updated, 'br-lan')
-        self.configs[0].update(enabled='1', **{key:str(value) for key,value in updated.items()})
-        self.assertTrue(app._reconcile_sqm_conditional(force=True)[0])
-        self.assertEqual(app._load_sqm_conditional('br-lan')['baseline'], updated)
-        self.assertEqual(app._load_sqm_conditional('eth2')['placement'], 'wan')
-        guest = app._load_sqm_conditional('eth2')
-        policy = app._load_sqm_conditional('br-lan')
-        policy['enabled'] = False
-        app._save_sqm_conditional(policy, 'br-lan')
-        self.assertTrue(app._reconcile_sqm_conditional(force=True, interface='br-lan')[0])
-        self.assertEqual(calls[-1], ('br-lan', updated))
-        self.assertEqual(app._load_sqm_conditional('eth2'), guest)
-        self.configs[1]['enabled'] = '1'
-        with patch.object(app, '_today_interface_wan_total', return_value=('2099-01-01', 0)):
-            self.assertTrue(app._reconcile_sqm_conditional(force=True)[0])
-        self.assertEqual(calls[-1], ('eth2', originals['eth2']))
         for iface in originals:
+            self.assertIn((iface, originals[iface]), calls)
+            self.assertFalse(app._load_sqm_conditional(iface)['enabled'])
             self.assertFalse(app._load_sqm_conditional(iface)['active'])
-            self.assertEqual(app._load_sqm_conditional(iface)['baseline'], {})
 
 
 if __name__ == '__main__':

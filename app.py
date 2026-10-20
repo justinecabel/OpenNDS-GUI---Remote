@@ -52,6 +52,8 @@ PASS = os.environ.get("ADMIN_PASS", "changeme")
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "")
 SEEN_FILE = os.environ.get("SEEN_FILE", "/data/seen.json")
 CLIENT_NAMES_FILE = os.environ.get("CLIENT_NAMES_FILE", "/data/client-names.json")
+SQM_NAMES_FILE = os.environ.get("SQM_NAMES_FILE", "/data/sqm-names.json")
+SQM_MODE_FILE = os.environ.get("SQM_MODE_FILE", "/data/sqm-mode.json")
 DELETED_FILE = os.environ.get("DELETED_FILE", "/data/deleted.json")
 ONLINE_SECS = int(os.environ.get("ONLINE_SECS", "300"))
 BLOCK_FILE = os.environ.get("BLOCK_FILE", "/data/blocked.json")
@@ -111,6 +113,16 @@ _clients_cache_lock = threading.Lock()
 _portal_lock = threading.Lock()
 _punishment_lock = threading.Lock()
 _punishment_tc_lock = threading.Lock()
+# Router settings snapshots are separate from runtime QoS verification.
+_sqm_cache_lock = threading.Lock()
+_sqm_cache_data = None
+_sqm_observed_data = None
+_sqm_cache_error = ""
+_sqm_cache_generation = 0
+_sqm_cache_published = -1
+_sqm_cache_attempted_at = 0.0
+SQM_CACHE_INTERVAL = 10
+SQM_CACHE_MAX_AGE = 30
 _qos_status_lock = threading.Lock()
 _qos_status_data = {"checked_at": 0, "networks": [], "queues": []}
 _networks_lock = threading.RLock()
@@ -164,6 +176,11 @@ def disable_api_cache(response):
         response.headers["Expires"] = "0"
     if request.method != "GET" and request.path in {"/api/action", "/api/mode", "/api/limits", "/api/punishment"}:
         _invalidate_clients_cache()
+    if (request.method == "PUT" and request.path in
+            {"/api/sqm", "/api/sqm/mode", "/api/sqm/conditional", "/api/networks"}
+            and response.status_code not in (400, 401, 403, 409)):
+        # Even a failed operation may have partially changed the router.
+        _invalidate_sqm_cache()
     return response
 
 
@@ -667,7 +684,7 @@ def clients():
 
 
 def _infrastructure_client_ips():
-    """Known manager/router addresses, excluded from display only; no router reads."""
+    """Known manager/router addresses, excluded from Clients/Overview; no router reads."""
     state = _network_state()
     candidates = [HOST, state.get("gateway_ip"), state.get("metadata", {}).get("fasremoteip")]
     try:
@@ -1046,9 +1063,14 @@ def networks():
 
 
 def _read_sqm_queues():
+    global _sqm_observed_data
     rc, out, err = ssh("uci -q show sqm")
     if rc != 0:
-        return [], err or "no SQM configuration"
+        error = err or "no SQM configuration"
+        with _sqm_cache_lock:
+            _sqm_observed_data = {"error": error, "checked_at": time.time(),
+                                  "generation": _sqm_cache_generation}
+        return [], error
     sections = {}
     for line in out.decode(errors="replace").splitlines():
         match = re.fullmatch(r"sqm\.([A-Za-z0-9_]+|@queue\[\d+\])(?:\.(\w+))?=(.*)", line)
@@ -1061,8 +1083,14 @@ def _read_sqm_queues():
             continue
         if len(values) == 1:
             sections.setdefault(section, {})[key or ".type"] = values[0]
-    return [{**config, "section": section} for section, config in sections.items()
-            if config.get(".type") == "queue"], ""
+    queues = [{**config, "section": section} for section, config in sections.items()
+              if config.get(".type") == "queue"]
+    # Reuse reads already owned by control/validation; never publish under the
+    # traffic-control lock or acquire settings/conditional locks from here.
+    with _sqm_cache_lock:
+        _sqm_observed_data = {"queues": copy.deepcopy(queues), "checked_at": time.time(),
+                              "generation": _sqm_cache_generation, "error": ""}
+    return queues, ""
 
 
 def _sqm_for_ui(config):
@@ -1077,7 +1105,7 @@ def _sqm_for_ui(config):
 
 def _sqm_baseline_for_ui(config, policy):
     """Keep the saved normal rates separate from a daily rule's router rates."""
-    baseline = (policy.get("baseline", {}) if policy.get("placement") == "lan"
+    baseline = (policy.get("baseline", {}) if policy.get("placement") in ("lan", "aggregate")
                 else policy.get("baselines", {}).get("lan", {}))
     normal = dict(config)
     if set(baseline) == {"download", "upload"}:
@@ -1147,11 +1175,240 @@ def _save_extra_sqm(config, settings):
 
 
 _sqm_settings_lock = threading.RLock()
+_sqm_names_lock = threading.Lock()
+
+
+def _invalidate_sqm_cache():
+    global _sqm_cache_generation, _sqm_cache_error
+    with _sqm_cache_lock:
+        _sqm_cache_generation += 1
+        _sqm_cache_error = ""
+
+
+def _refresh_sqm_cache(force=False):
+    """One existing controller owns periodic reads; only explicit Reload reads inline.
+
+    Publish a complete snapshot after releasing router work. Cached HTTP reads
+    take only the short cache lock, never the settings/SSH/conditional locks.
+    """
+    global _sqm_cache_data, _sqm_cache_error, _sqm_cache_published, _sqm_cache_attempted_at
+    with _sqm_settings_lock:
+        with _sqm_cache_lock:
+            generation = _sqm_cache_generation
+            dirty = _sqm_cache_published != generation
+            if not force and time.monotonic() - _sqm_cache_attempted_at < SQM_CACHE_INTERVAL and not dirty:
+                return
+            _sqm_cache_attempted_at = time.monotonic()
+            observed = copy.deepcopy(_sqm_observed_data)
+            previous = copy.deepcopy(_sqm_cache_data)
+        snapshot, error = None, ""
+        try:
+            if (not force and observed and observed["generation"] == generation
+                    and time.time() - observed["checked_at"] <= SQM_CACHE_MAX_AGE):
+                queues, error = observed.get("queues", []), observed.get("error", "")
+                checked_at = observed["checked_at"]
+            else:
+                checked_at = time.time()
+                queues, error = _read_sqm_queues()
+            if not error:
+                # Link discovery changes infrequently. Keep its own cadence so
+                # routine cache publication does not add SSH traffic.
+                if force or not previous or time.time() - previous["interfaces_checked_at"] >= 60:
+                    interfaces = [name for name in _router_interfaces()
+                                  if name != "lo" and not name.startswith("ifb")]
+                    interfaces_checked_at = time.time()
+                else:
+                    interfaces = previous["interfaces"]
+                    interfaces_checked_at = previous["interfaces_checked_at"]
+                rows = _network_state().get("networks", [])
+                roles = {row["device"]: row["name"] + " · " + row["role"]
+                         for row in rows if row.get("device") and row.get("subnets")}
+                interfaces = sorted(set(interfaces + [q["interface"] for q in queues if q.get("interface")]))
+                primary = next((q for q in queues if q.get("interface") == _primary_lan_device()), None)
+                primary = primary or next((q for q in queues if q.get("interface") == WAN_IFACE), None)
+                with _sqm_conditional_lock:
+                    rules = _load_sqm_conditional_store()["rules"]
+                    baselines = [_sqm_baseline_for_ui(q, rules.get(q.get("interface"), {})) for q in queues]
+                snapshot = {"queues": copy.deepcopy(queues), "interfaces": interfaces, "roles": roles,
+                            "baseline_queues": baselines, "checked_at": checked_at,
+                            "interfaces_checked_at": interfaces_checked_at,
+                            "primary_interface": (primary or {}).get("interface", _primary_lan_device())}
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            error = "SQM read timed out" if isinstance(exc, subprocess.TimeoutExpired) else str(exc)
+        with _sqm_cache_lock:
+            if generation == _sqm_cache_generation:
+                _sqm_cache_data, _sqm_cache_error = snapshot, error
+                # Failed reads retry at the regular cadence, without a busy loop.
+                _sqm_cache_published = generation
+
+
+def _load_sqm_names():
+    names = _load_json(SQM_NAMES_FILE, {})
+    return {iface: name.strip() for iface, name in names.items()
+            if isinstance(iface, str) and _IFACE_RE.fullmatch(iface)
+            and isinstance(name, str) and name.strip()} if isinstance(names, dict) else {}
+
+
+def _load_sqm_mode():
+    saved = _load_json(SQM_MODE_FILE, {})
+    if (isinstance(saved, dict) and saved.get("mode") == "single"
+            and isinstance(saved.get("interface"), str)
+            and _IFACE_RE.fullmatch(saved["interface"])
+            and saved["interface"] != "lo" and not saved["interface"].startswith("ifb")):
+        return {"mode": "single", "interface": saved["interface"]}
+    return {"mode": "multiple", "interface": ""}
+
+
+def _apply_single_sqm(queues, selected):
+    """Commit one enabled queue; roll back config and scoped runtime on failure."""
+    interfaces = [q.get("interface", "") for q in queues]
+    if len(set(interfaces)) != len(interfaces):
+        return False, "Duplicate SQM queues; resolve them before choosing Single interface"
+    if selected not in interfaces:
+        return False, "Configure this interface's Baseline first"
+    for queue in queues:
+        if (not _IFACE_RE.fullmatch(queue.get("interface", ""))
+                or queue["interface"] == "lo" or queue["interface"].startswith("ifb")
+                or not re.fullmatch(r"[A-Za-z0-9_]+|@queue\[\d+\]", queue.get("section", ""))):
+            return False, "Invalid SQM queue"
+    # Stop every other interface, including any obsolete runtime state. An
+    # already-enabled selected queue keeps its roots and current Daily rates.
+    affected = [q for q in queues if q["interface"] != selected or q.get("enabled") != "1"]
+    rollback = ["set +e", "uci revert sqm", 'cp "$sqm_mode_backup" /etc/config/sqm']
+    for queue in affected:
+        rollback.append("( " + _sqm_apply_script(shlex.quote(queue["interface"]),
+                         "1" if queue.get("enabled") == "1" else "0")
+                        + ' ) || echo "SQM rollback incomplete" >&2')
+    commands = ["set -e", "sqm_mode_backup=$(mktemp)",
+                'cp /etc/config/sqm "$sqm_mode_backup"',
+                "cp /etc/config/sqm /etc/config/sqm.manager-bak",
+                'sqm_mode_finish() { sqm_mode_rc=$?; trap - EXIT; '
+                'if [ "$sqm_mode_rc" -ne 0 ]; then ' + "; ".join(rollback) + '; fi; '
+                'rm -f "$sqm_mode_backup"; exit "$sqm_mode_rc"; }',
+                "trap sqm_mode_finish EXIT"]
+    for queue in queues:
+        section = "sqm." + shlex.quote(queue["section"])
+        enabled = "1" if queue["interface"] == selected else "0"
+        commands.append(f"uci set {section}.enabled={enabled}")
+        if enabled == "0":
+            # Disabling Daily must retain the saved normal bandwidth, rather
+            # than leaving its temporary throttled rates in the disabled queue.
+            normal = _sqm_baseline_for_ui(queue, _load_sqm_conditional(queue["interface"]))
+            for key in ("download", "upload"):
+                if normal.get(key) != _sqm_for_ui(queue).get(key):
+                    rate = _kbytes_to_kbits(normal[key], 10_000_000)
+                    commands.append(f"uci set {section}.{key}={rate}")
+    commands.append("uci commit sqm")
+    for queue in affected:
+        if queue["interface"] != selected:
+            commands.append(_sqm_apply_script(shlex.quote(queue["interface"]), "0"))
+    if any(q["interface"] == selected for q in affected):
+        commands.append(_sqm_apply_script(shlex.quote(selected), "1"))
+    for queue in queues:
+        enabled = "1" if queue["interface"] == selected else "0"
+        section = "sqm." + shlex.quote(queue["section"])
+        commands.append(f'[ "$(uci -q get {section}.enabled)" = {enabled} ]')
+    rc, output, error = ssh("; ".join(commands), timeout=60)
+    return rc == 0, (output.decode(errors="replace") + error).strip() if rc else ""
+
+
+@app.route("/api/sqm/mode", methods=["PUT"])
+@requires_auth
+def sqm_mode():
+    body = request.get_json(force=True)
+    if not isinstance(body, dict) or body.get("mode") not in ("single", "multiple"):
+        return jsonify(ok=False, output="Choose Single interface or Multiple interfaces"), 400
+    with _sqm_settings_lock:
+        mode = {"mode": body["mode"], "interface": ""}
+        if mode["mode"] == "multiple":
+            _save_json(SQM_MODE_FILE, mode)
+            return jsonify(ok=True, sqm_mode=mode, output="Multiple interfaces; queues unchanged")
+        iface = body.get("interface")
+        if (not isinstance(iface, str) or not _IFACE_RE.fullmatch(iface)
+                or iface == "lo" or iface.startswith("ifb")):
+            return jsonify(ok=False, output="Choose an SQM interface"), 400
+        queues, error = _read_sqm_queues()
+        if error:
+            return jsonify(ok=False, output=error), 502
+        if len([q for q in queues if q.get("interface") == iface]) != 1:
+            return jsonify(ok=False, output="Configure one Baseline for " + iface + " first"), 409
+        with _punishment_tc_lock:
+            ok, error = _apply_single_sqm(queues, iface)
+        if not ok:
+            return jsonify(ok=False, output=error or "SQM mode apply failed; previous mode retained"), 502
+        with _sqm_conditional_lock:
+            for queue in queues:
+                if queue["interface"] != iface:
+                    _turn_off_sqm_daily(queue["interface"], clear_baseline=True)
+        mode["interface"] = iface
+        _save_json(SQM_MODE_FILE, mode)
+        daily_ok, daily_message = _reconcile_sqm_conditional(force=True)
+        queues_ok, queues_message = _refresh_punishment()
+        pending = "; ".join(message for success, message in
+                            ((daily_ok, daily_message), (queues_ok, queues_message)) if not success)
+        return jsonify(ok=True, sqm_mode=mode, output="Single interface: " + iface,
+                       tc_error="SQM mode saved; " + pending if pending else "")
+
+
+@app.route("/api/sqm/name", methods=["PUT"])
+@requires_auth
+def sqm_name():
+    body = request.get_json(force=True)
+    if not isinstance(body, dict):
+        return jsonify(ok=False, output="SQM name must be an object"), 400
+    iface, name = body.get("interface"), body.get("name", "")
+    if (not isinstance(iface, str) or not _IFACE_RE.fullmatch(iface)
+            or iface == "lo" or iface.startswith("ifb")):
+        return jsonify(ok=False, output="invalid interface"), 400
+    if not isinstance(name, str):
+        return jsonify(ok=False, output="name must be text"), 400
+    name = name.strip()
+    if len(name) > 64 or any(ord(char) < 32 for char in name):
+        return jsonify(ok=False, output="name must be 64 characters or fewer without control characters"), 400
+    with _sqm_names_lock:
+        names = _load_sqm_names()
+        if name:
+            names[iface] = name
+        else:
+            names.pop(iface, None)
+        _save_json(SQM_NAMES_FILE, names)
+    return jsonify(ok=True, interface=iface, name=name)
 
 
 @app.route("/api/sqm", methods=["GET", "PUT"])
 @requires_auth
 def sqm():
+    if request.method == "GET":
+        if request.args.get("refresh") == "1":
+            _refresh_sqm_cache(force=True)
+        with _sqm_cache_lock:
+            snapshot = copy.deepcopy(_sqm_cache_data)
+            error = _sqm_cache_error
+            dirty = _sqm_cache_published != _sqm_cache_generation
+        if error:
+            return jsonify(ok=False, stale=True, output=error), 502
+        age = max(0, time.time() - snapshot["checked_at"]) if snapshot else None
+        if not snapshot or dirty or age > SQM_CACHE_MAX_AGE:
+            return jsonify(ok=False, pending=True, stale=True, age=age, output="Refreshing SQM"), 202
+        queues, interfaces, roles = snapshot["queues"], snapshot["interfaces"], snapshot["roles"]
+        primary = next((q for q in queues if q.get("interface") == snapshot["primary_interface"]), None)
+        mode = _load_sqm_mode()
+        selected = (request.args.get("interface") or mode["interface"]
+                    or (primary or {}).get("interface") or _primary_lan_device())
+        matches = [q for q in queues if q.get("interface") == selected]
+        if len(matches) > 1:
+            return jsonify(ok=False, output="Duplicate SQM queues for " + selected), 409
+        config = matches[0] if matches else {}
+        baselines = snapshot["baseline_queues"]
+        baseline_config = next((q for q in baselines if q.get("interface") == selected), {})
+        return jsonify(ok=True, configured=bool(config), config=_sqm_for_ui(config),
+                       baseline_config=baseline_config, baseline_queues=baselines,
+                       checked_at=snapshot["checked_at"], age=age, stale=False, cached=True,
+                       selected_interface=selected, interfaces=interfaces, interface_roles=roles,
+                       queues=[_sqm_for_ui(q) for q in queues], rate_unit="KB/s",
+                       interface_names=_load_sqm_names(), wan_interface=WAN_IFACE, sqm_mode=mode,
+                       primary_interface=(primary or {}).get("interface", _primary_lan_device()),
+                       output="" if config else "No SQM queue · Apply to create")
     with _sqm_settings_lock:
         queues, error = _read_sqm_queues()
         if error:
@@ -1166,24 +1423,6 @@ def sqm():
         interfaces = sorted(set(interfaces))
         primary = next((q for q in queues if q.get("interface") == _primary_lan_device()), None)
         primary = primary or next((q for q in queues if q.get("interface") == WAN_IFACE), None)
-        if request.method == "GET":
-            selected = request.args.get("interface") or (primary or {}).get("interface") or _primary_lan_device()
-            matches = [q for q in queues if q.get("interface") == selected]
-            if len(matches) > 1:
-                return jsonify(ok=False, output="Duplicate SQM queues for " + selected), 409
-            config = matches[0] if matches else {}
-            with _sqm_conditional_lock:
-                rules = _load_sqm_conditional_store()["rules"]
-                baselines = [_sqm_baseline_for_ui(q, rules.get(q.get("interface"), {}))
-                             for q in queues]
-                baseline_config = (_sqm_baseline_for_ui(config, rules.get(selected, {}))
-                                   if config else {})
-            return jsonify(ok=True, configured=bool(config), config=_sqm_for_ui(config),
-                           baseline_config=baseline_config, baseline_queues=baselines,
-                           selected_interface=selected, interfaces=interfaces, interface_roles=roles,
-                           queues=[_sqm_for_ui(q) for q in queues], rate_unit="KB/s",
-                           primary_interface=(primary or {}).get("interface", _primary_lan_device()),
-                           output="" if config else "No SQM queue · Apply to create")
         body = request.get_json(force=True)
         if not isinstance(body, dict):
             return jsonify(ok=False, output="SQM settings must be an object"), 400
@@ -1202,6 +1441,9 @@ def sqm():
         config = matches[0] if matches else {}
         settings = {"enabled": "1" if body.get("enabled") else "0", "interface": iface,
                     "qdisc": qdisc, "script": script, "download": down, "upload": up}
+        mode = _load_sqm_mode()
+        if mode["mode"] == "single" and iface != mode["interface"] and settings["enabled"] == "1":
+            return jsonify(ok=False, output="Single interface mode: choose " + iface + " under SQM mode first"), 409
         is_primary = bool(primary and config.get("section") == primary["section"])
         if is_primary:
             if any(config.get(key) != settings[key] for key in ("enabled", "interface", "qdisc", "script")):
@@ -1217,6 +1459,14 @@ def sqm():
                 ok, error = _save_extra_sqm(config, settings)
         if not ok:
             return jsonify(ok=False, output=error), 502
+        if settings["enabled"] == "0":
+            with _sqm_conditional_lock:
+                _turn_off_sqm_daily(iface, clear_baseline=True)
+            queues_ok, queues_message = (_refresh_punishment() if is_primary else _refresh_punishment(iface))
+            # A successful stop is saved even if another queue needs attention.
+            return jsonify(ok=True, output="Disabled " + iface + "; Daily off",
+                           tc_error=("Disabled " + iface + "; Daily off. Client queues pending: " + queues_message)
+                           if not queues_ok else "")
         _set_sqm_conditional_baseline({"download": down, "upload": up}, iface)
         ok, message = _reconcile_sqm_conditional(force=True, interface=iface)
         queues_ok, queues_message = (_refresh_punishment() if is_primary else _refresh_punishment(iface))
@@ -1236,8 +1486,8 @@ def sqm_conditional():
     if not isinstance(body, dict):
         return jsonify(ok=False, output="daily SQM rule must be an object"), 400
     interface = body.get("interface", _primary_lan_device())
-    if not isinstance(interface, str) or interface not in _sqm_daily_interfaces():
-        return jsonify(ok=False, output="Select a discovered LAN interface"), 400
+    if not isinstance(interface, str) or interface not in _sqm_rule_interfaces():
+        return jsonify(ok=False, output="Select a discovered LAN or the WAN interface"), 400
     with _sqm_settings_lock, _sqm_conditional_lock:
         policy = _load_sqm_conditional(interface)
         try:
@@ -1255,12 +1505,19 @@ def sqm_conditional():
         except (TypeError, ValueError) as error:
             return jsonify(ok=False, output=f"invalid daily SQM rule: {error}"), 400
         if enabled or force_today:
+            queues, error = _read_sqm_queues()
+            if error:
+                return jsonify(ok=False, output=error), 502
+            if not _sqm_baseline_enabled(interface, queues):
+                return jsonify(ok=False, output="Enable this interface's Baseline before enabling Daily"), 409
+            if interface == WAN_IFACE and (not download or not upload):
+                return jsonify(ok=False, output="Shared WAN Daily requires positive download and upload rates"), 400
             queue, error = _daily_sqm_queue(interface)
             if not queue:
                 return jsonify(ok=False, output=error), 409
         if force_today:
             enabled = True
-            today, _ = _today_interface_wan_total(interface)
+            today, _ = _today_sqm_rule_usage(interface)
             policy["forced_date"] = today
         elif not enabled:
             policy["forced_date"] = ""
@@ -1308,6 +1565,8 @@ def action():
                 punished.add(mac)
             else:
                 punished.discard(mac)
+                if policy.get("auto_seen") is not None:
+                    policy["auto_seen"] = sorted(set(policy["auto_seen"]) | {mac})
             policy["punished"] = sorted(punished)
             _save_punishment_policy(policy)
         ok, detail = _refresh_punishment(target) if target else _refresh_punishment()
@@ -1315,7 +1574,14 @@ def action():
             # Do not leave a client marked as punished when its qdisc could not
             # be installed. The previous policy remains the truthful state.
             with _punishment_lock:
-                _save_punishment_policy(previous)
+                restored = _load_punishment_policy()
+                punished = set(restored["punished"])
+                if mac in previous["punished"]:
+                    punished.add(mac)
+                else:
+                    punished.discard(mac)
+                restored["punished"] = sorted(punished)
+                _save_punishment_policy(restored)
         log.info("%s %s", act, mac)
         return jsonify(ok=ok, output=f"{act}ed {mac}; {detail}"), (200 if ok else 502)
     if act in {"block", "unblock"}:
@@ -2078,7 +2344,8 @@ def _load_wan_usage():
     return {"version": version, "day": day, "month": month, "sample_at": max(0, sample_at),
             "interface_days": interface_days, "interface_tracking_since": interface_tracking_since,
             "devices": devices, "flows": flows, "rates": rates, "boot_id": boot_id.lower(),
-            "sampler_id": sampler_id, "interface_last": interface_last}
+            "sampler_id": sampler_id, "interface_last": interface_last,
+            "overview": raw.get("overview") if isinstance(raw.get("overview"), dict) else {}}
 
 
 def _load_client_wan_history():
@@ -2198,7 +2465,7 @@ def _conntrack_read_command(ip_to_mac):
     The full original/reply records are retained for the existing parser.
     """
     addresses = []
-    for value in ip_to_mac:
+    for value in ip_to_mac or {}:
         try:
             addresses.append(str(ipaddress.IPv4Address(value)))
         except (ipaddress.AddressValueError, TypeError):
@@ -2224,7 +2491,7 @@ def _conntrack_read_command(ip_to_mac):
 
 def _read_wan_flows(ip_to_mac, raw=None):
     """Read NATed IPv4 flows, whose reply destination is the WAN address."""
-    if not ip_to_mac:
+    if ip_to_mac is None or (not ip_to_mac and raw is None):
         return None
     if raw is None:
         interface = shlex.quote(WAN_IFACE)
@@ -2305,10 +2572,12 @@ def _wan_usage_snapshot(ip_to_mac, active_macs, at, raw=None):
     # Attribute new deltas at collection time. Moving/deleting a MAC later
     # must never move or erase bytes already charged to another interface.
     mac_interfaces = {}
-    for ip, mac in ip_to_mac.items():
+    for ip, mac in (ip_to_mac or {}).items():
         network = _client_network({"ip": ip})
         if network and network.get("role") == "LAN":
             mac_interfaces[mac] = network["device"]
+    hidden_ips = _infrastructure_client_ips()
+    overview_macs = {mac for ip, mac in (ip_to_mac or {}).items() if ip not in hidden_ips} & active_macs
     with _wan_usage_lock:
         if _wan_usage_data is None:
             _wan_usage_data = _load_wan_usage()
@@ -2343,6 +2612,8 @@ def _wan_usage_snapshot(ip_to_mac, active_macs, at, raw=None):
                 values["month"] = {"download": 0, "upload": 0}
         state["day"] = day
         state["month"] = month
+        deltas = {}
+        baseline_needed = True
         if sampled is not None:
             _, boot_id, interface_counters, flows = sampled
             elapsed = at - previous_at
@@ -2429,6 +2700,13 @@ def _wan_usage_snapshot(ip_to_mac, active_macs, at, raw=None):
                 state["interface_last"] = interface_counters
             history_encoded = _record_client_wan_history(active_macs, state["rates"], at)
             _record_client_wan_live_history(active_macs, state["rates"], at)
+        else:
+            # An unavailable collector/flow sample is a gap, not an idle LAN.
+            # Do not charge the intervening bytes when sampling recovers.
+            state["sampler_id"] = ""
+            state["rates"] = {}
+        _record_client_traffic(state, overview_macs, at, deltas,
+                               sampled is not None, not baseline_needed and at > previous_at)
         state["devices"] = devices
         encoded = json.dumps(state)
         result = {}
@@ -2556,7 +2834,7 @@ def _clean_sqm_conditional(data):
         forced_date = ""
     baselines = {}
     for scope, values in (data.get("baselines") or {}).items() if isinstance(data.get("baselines"), dict) else []:
-        if scope in ("lan", "wan") and isinstance(values, dict) and set(values) == {"download", "upload"}:
+        if scope in ("lan", "wan", "aggregate") and isinstance(values, dict) and set(values) == {"download", "upload"}:
             try:
                 clean = {key: int(value) for key, value in values.items()}
                 if all(0 <= value <= PUNISH_CAP_MAX for value in clean.values()):
@@ -2566,7 +2844,7 @@ def _clean_sqm_conditional(data):
     placement = data.get("placement", "lan" if data.get("active") or baseline else "")
     return {"enabled": data.get("enabled") is True, "threshold_gb": threshold_gb, **rates,
             "active": data.get("active") is True, "baseline": baseline,
-            "placement": placement if placement in ("lan", "wan") else "", "baselines": baselines,
+            "placement": placement if placement in ("lan", "wan", "aggregate") else "", "baselines": baselines,
             "forced_date": forced_date, "error": error if isinstance(error, str) else ""}
 
 
@@ -2577,6 +2855,16 @@ def _sqm_daily_interfaces():
     if not interfaces and not _network_state().get("initialized"):
         interfaces[_primary_lan_device()] = "LAN"
     return interfaces
+
+
+def _sqm_rule_interfaces():
+    """Daily rule targets; keep WAN out of per-LAN policy placement."""
+    return {**_sqm_daily_interfaces(), WAN_IFACE: "WAN (all traffic)"}
+
+
+def _today_sqm_rule_usage(interface):
+    return (_today_wan_traffic_total() if interface == WAN_IFACE
+            else _today_interface_wan_total(interface))
 
 
 def _load_sqm_conditional_store():
@@ -2602,6 +2890,22 @@ def _save_sqm_conditional(policy, interface=None):
     _save_json(SQM_CONDITIONAL_FILE, store)
 
 
+def _sqm_baseline_enabled(interface, queues):
+    matches = [queue for queue in queues if queue.get("interface") == interface]
+    return len(matches) == 1 and matches[0].get("enabled") == "1"
+
+
+def _turn_off_sqm_daily(interface, clear_baseline=False):
+    policy = _load_sqm_conditional(interface)
+    previous = copy.deepcopy(policy)
+    policy.update(enabled=False, active=False, forced_date="", error="")
+    if clear_baseline:
+        policy.update(baseline={}, baselines={}, placement="")
+    if policy != previous:
+        _save_sqm_conditional(policy, interface)
+    return policy
+
+
 def _today_interface_wan_total(interface):
     day = _traffic_time(time.time()).strftime("%Y-%m-%d")
     with _wan_usage_lock:
@@ -2612,7 +2916,7 @@ def _today_interface_wan_total(interface):
 
 def _sqm_conditional_response(interface):
     store = _load_sqm_conditional_store()
-    interfaces = _sqm_daily_interfaces()
+    interfaces = _sqm_rule_interfaces()
     # Missing saved targets stay visible and never switch to another queue.
     names = sorted(set(interfaces) | set(store["rules"]),
                    key=lambda iface: (iface != _primary_lan_device(), iface))
@@ -2627,8 +2931,7 @@ def _today_wan_traffic_total():
     """The SQM threshold is all traffic crossing the WAN interface."""
     with _wan_traffic_lock:
         data = _wan_traffic_state()
-        at = data["updated_at"] or int(time.time())
-        day = _traffic_time(at).strftime("%Y-%m-%d")
+        day = _traffic_time(time.time()).strftime("%Y-%m-%d")
         totals = data["days"].get(day, {})
         try:
             total = int(totals.get("download", 0)) + int(totals.get("upload", 0))
@@ -2639,13 +2942,18 @@ def _today_wan_traffic_total():
 
 def _sqm_conditional_for_ui(policy, interface=None):
     interface = interface or _primary_lan_device()
-    day, today_bytes = _today_interface_wan_total(interface)
-    with _wan_usage_lock:
-        state = _wan_usage_data if _wan_usage_data is not None else _load_wan_usage()
-        tracking_since = state.get("interface_tracking_since", 0)
-    return {"interface": interface, "network": _sqm_daily_interfaces().get(interface, "Unavailable"),
-            "available": interface in _sqm_daily_interfaces(), "tracking_since": tracking_since,
-            "usage_scope": "interface_wan_ipv4", "enabled": policy["enabled"], "threshold_gb": policy["threshold_gb"],
+    day, today_bytes = _today_sqm_rule_usage(interface)
+    if interface == WAN_IFACE:
+        with _wan_traffic_lock:
+            tracking_since = _wan_traffic_state()["started_at"]
+    else:
+        with _wan_usage_lock:
+            state = _wan_usage_data if _wan_usage_data is not None else _load_wan_usage()
+            tracking_since = state.get("interface_tracking_since", 0)
+    return {"interface": interface, "network": _sqm_rule_interfaces().get(interface, "Unavailable"),
+            "available": interface in _sqm_rule_interfaces(), "tracking_since": tracking_since,
+            "usage_scope": "all_wan" if interface == WAN_IFACE else "interface_wan_ipv4",
+            "enabled": policy["enabled"], "threshold_gb": policy["threshold_gb"],
             "download": _kbits_to_kbytes(policy["download"]),
             "upload": _kbits_to_kbytes(policy["upload"]), "active": policy["active"],
             "forced_today": policy.get("forced_date") == day,
@@ -2777,14 +3085,18 @@ def _set_sqm_conditional_baseline(rates, interface=None):
 
 
 def _daily_sqm_queue(interface):
-    if interface not in _sqm_daily_interfaces():
-        return None, "LAN interface unavailable: " + interface
+    if interface not in _sqm_rule_interfaces():
+        return None, "Daily interface unavailable: " + interface
     queues, error = _read_sqm_queues()
     if error:
         return None, error
     matches = [queue for queue in queues if queue.get("interface") == interface]
     if len(matches) > 1:
         return None, "Expected one SQM queue for " + interface
+    if interface == WAN_IFACE:
+        if not matches or matches[0].get("enabled") != "1" or matches[0].get("qdisc") != "cake":
+            return None, "Shared WAN Daily requires an enabled CAKE queue on " + interface
+        return matches[0], ""
     if not matches or matches[0].get("enabled") != "1":
         routes, error = _qos_placements(queues)
         route = routes.get(interface, {})
@@ -2812,11 +3124,16 @@ def _daily_sqm_get_rates(interface):
 
 
 def _daily_sqm_set_rates(interface, rates):
+    _invalidate_sqm_cache()
     queue, error = _daily_sqm_queue(interface)
     if not queue:
         return False, error
     if queue.get("qos_placement") == "wan":
         return _refresh_punishment()
+    if interface == WAN_IFACE:
+        ok, error = _set_sqm_rates(rates, interface)
+        # A managed WAN root changes in the existing shared hierarchy owner.
+        return _refresh_punishment() if ok else (False, error)
     if interface == _primary_lan_device():
         return _set_sqm_rates(rates, interface)
     if queue.get("qdisc") == "cake":
@@ -2857,7 +3174,22 @@ def _reconcile_sqm_conditional(force=False, interface=None):
 
 
 def _reconcile_sqm_interface(interface, policy):
-    today, today_bytes = _today_interface_wan_total(interface)
+    if policy["enabled"] or policy["active"] or policy["baseline"]:
+        queues, error = _read_sqm_queues()
+        if error:
+            policy["error"] = error
+            _save_sqm_conditional(policy, interface)
+            return False, error
+        if not _sqm_baseline_enabled(interface, queues):
+            matches = [queue for queue in queues if queue.get("interface") == interface]
+            if len(matches) > 1:
+                policy["error"] = "Duplicate SQM queues for " + interface
+                _save_sqm_conditional(policy, interface)
+                return False, policy["error"]
+            # Keep a restore point for a queue disabled outside this manager.
+            _turn_off_sqm_daily(interface)
+            return True, "Baseline off; Daily off"
+    today, today_bytes = _today_sqm_rule_usage(interface)
     threshold_bytes = int(Decimal(policy["threshold_gb"]) * (1024 ** 3))
     forced_today = policy.get("forced_date") == today and policy["enabled"]
     should_apply = forced_today or (policy["enabled"] and today_bytes >= threshold_bytes)
@@ -2869,7 +3201,8 @@ def _reconcile_sqm_interface(interface, policy):
             _save_sqm_conditional(policy, interface)
             return False, error
         routes, _ = _qos_placements()
-        scope = "wan" if routes.get(interface, {}).get("placement") == "wan" else "lan"
+        scope = ("aggregate" if interface == WAN_IFACE else
+                 "wan" if routes.get(interface, {}).get("placement") == "wan" else "lan")
         if policy.get("placement") and policy["placement"] != scope:
             if policy["baseline"]:
                 policy.setdefault("baselines", {})[policy["placement"]] = policy["baseline"]
@@ -2923,7 +3256,8 @@ def _clean_loss_pct(value):
 def _load_punishment_policy():
     data = _load_json(PUNISH_FILE, None)
     # Migrate the short-lived earlier latency-policy format without keeping its auto-punish behavior.
-    if not isinstance(data, dict):
+    legacy = not isinstance(data, dict)
+    if legacy:
         data = _load_json(os.environ.get("LATENCY_FILE", "/data/latency.json"), {})
     if not isinstance(data, dict):
         data = {}
@@ -2949,7 +3283,11 @@ def _load_punishment_policy():
         stored_punished = []
     punished = sorted({mac.lower() for mac in stored_punished
                        if isinstance(mac, str) and MAC_RE.match(mac)})
-    return {"delay_ms": delay, **caps, "loss_pct": loss_pct, "punished": punished}
+    seen = data.get("auto_seen")
+    seen = sorted({mac.lower() for mac in seen if isinstance(mac, str) and MAC_RE.fullmatch(mac)}) if isinstance(seen, list) else None
+    return {"delay_ms": delay, **caps, "loss_pct": loss_pct, "punished": punished,
+            "auto_punish_new": not legacy and data.get("auto_punish_new") is True,
+            "auto_seen": seen}
 
 
 def _save_punishment_policy(policy):
@@ -2959,6 +3297,56 @@ def _save_punishment_policy(policy):
 def _punishment_policy_snapshot():
     with _punishment_lock:
         return _load_punishment_policy()
+
+
+def _punishment_online_clients(clients):
+    """Match the Clients online window, excluding infrastructure/unmanaged IPs."""
+    hidden, now, online = _infrastructure_client_ips(), int(time.time()), {}
+    for client in clients:
+        mac = str(client.get("mac", "")).lower()
+        try:
+            active = now - int(client.get("last_active") or 0) <= ONLINE_SECS
+            valid_ip = ipaddress.ip_address(client.get("ip", "")).version == 4
+        except (TypeError, ValueError):
+            continue
+        if (active and valid_ip and MAC_RE.fullmatch(mac) and client.get("ip") not in hidden
+                and client.get("state") in ("Authenticated", "Preauthenticated")
+                and _client_tc_interface(client)):
+            online[mac] = client
+    return online
+
+
+def _punishment_history_macs(policy):
+    """Seed first-connection memory from existing and retired client records."""
+    history = _load_seen()
+    known = set(history) if isinstance(history, dict) else set()
+    known.update(_load_deleted())
+    known.update(policy["punished"])
+    # Migrate the previous connection-based tracker without treating its users
+    # as first-time devices. Read-only policy GETs never persist this migration.
+    old = _load_json(PUNISH_FILE, {})
+    if isinstance(old, dict) and isinstance(old.get("auto_online"), list):
+        known.update(mac for mac in old["auto_online"] if isinstance(mac, str))
+    return {mac.lower() for mac in known if isinstance(mac, str) and MAC_RE.fullmatch(mac)}
+
+
+def _auto_punish_connections(clients, blocked, trusted):
+    # Resolve network identities before taking the policy lock. The existing
+    # controller supplies a fresh snapshot; no new SSH read/worker is needed.
+    online = _punishment_online_clients(clients)
+    eligible = {mac for mac, client in online.items()
+                if mac not in blocked and mac not in trusted and _client_mode(client) != "auto_trust"}
+    with _punishment_lock:
+        policy = _load_punishment_policy()
+        previous = policy["auto_seen"]
+        known = set(previous) if previous is not None else _punishment_history_macs(policy)
+        added = eligible - known if policy["auto_punish_new"] and previous is not None else set()
+        current = sorted(known | set(online))
+        if added or previous != current:
+            policy["punished"] = sorted(set(policy["punished"]) | added)
+            policy["auto_seen"] = current
+            _save_punishment_policy(policy)
+        return policy
 
 
 def _punishment_tc_state(interface=None):
@@ -3001,6 +3389,7 @@ def _punishment_for_ui(policy):
     errors = ([f"{_primary_lan_device()}: {tc['error']}"] if tc.get("error") else [])
     errors += [f"{iface}: {s['error']}" for iface, s in tc.get("networks", {}).items() if s.get("error")]
     return {"delay_ms": policy["delay_ms"], "loss_pct": policy["loss_pct"],
+            "auto_punish_new": policy.get("auto_punish_new", False),
             "download": _kbits_to_kbytes(policy["download"]),
             "upload": _kbits_to_kbytes(policy["upload"]), "punished": len(policy["punished"]),
             "rate_unit": "KB/s", "tc_active": _managed_tc_active(tc),
@@ -3611,22 +4000,23 @@ def _wan_qos_cleanup():
         if rc:
             raise ValueError(error or "WAN cleanup inspection failed")
         ingress, nft = out.decode(errors="replace").split("@@NFT\n", 1)
-        owned = wan_shaping.ingress_status(ingress)
+        owned = wan_shaping.ingress_handle(ingress)
         if nft.strip() and not re.search(r'comment "manager-[a-f0-9]+"', nft):
             raise ValueError("WAN classification table ownership conflict")
         commands = []
         if nft.strip():
             commands.append(f"nft delete table inet {wan_shaping.TABLE}")
         if owned:
-            commands.append(f"tc filter delete dev {shlex.quote(dev)} parent ffff: protocol ip pref 1 "
-                            f"handle {wan_shaping.HANDLE} u32")
+            # Ownership validation allows no other nodes at this priority.
+            # Remove its hash table too, so reinstallation can allocate cleanly.
+            commands.append(f"tc filter delete dev {shlex.quote(dev)} parent ffff: protocol ip pref 1")
         if commands:
             rc, out, error = ssh("set -e; " + "; ".join(commands))
             if rc:
                 raise ValueError(error or "WAN classification cleanup failed")
         rc, out, error = ssh(read)
         remaining_ingress, remaining_nft = out.decode(errors="replace").split("@@NFT\n", 1)
-        if rc or remaining_nft.strip() or wan_shaping.HANDLE in remaining_ingress:
+        if rc or remaining_nft.strip() or wan_shaping.ingress_status(remaining_ingress):
             raise ValueError(error or "WAN cleanup verification pending")
     except (ValueError, subprocess.TimeoutExpired, OSError) as exc:
         error = str(exc)
@@ -3779,17 +4169,49 @@ def _publish_qos_status(queues, routes, desired, error=""):
                     message = reason
             except (subprocess.TimeoutExpired, OSError, ValueError) as exc:
                 message = str(exc)
-        state = "error" if message else "pending" if pending or not verified or now - verified > 15 else "active" if count or daily_active else "ready"
+        off = route.get("error") == "No enabled LAN or WAN SQM queue" and not error
+        if off:
+            message = "SQM off" + ("; device caps, delay and Punish are inactive" if count else "")
+        state = "off" if off else "error" if message else "pending" if pending or not verified or now - verified > 15 else "active" if count or daily_active else "ready"
         rows.append({"interface": iface, "network": name, "placement": scope,
                      "queue_interface": route.get("queue_interface", ""), "state": state,
                      "message": message or ("Queue verification pending" if state == "pending" else ""),
                      "clients": count, "daily_active": bool(daily_active), "verified_at": verified,
                      "traffic_scope": "IPv4 WAN traffic" if scope == "wan" else "LAN interface traffic"})
+    queue_rows = []
+    names = _load_sqm_names()
+    networks = {row.get("device"): row.get("name", "")
+                for row in _network_state().get("networks", [])}
+    for queue in queues:
+        iface = queue.get("interface", "")
+        enabled = queue.get("enabled") == "1"
+        daily = _load_sqm_conditional(iface)
+        related = next((row for row in rows if row["interface"] == iface and row["placement"] == "lan"), None)
+        state, message, verified = "off", "", 0
+        if enabled:
+            if iface == WAN_IFACE and (wan.get("installed") or any(row["placement"] == "wan" for row in rows)):
+                verified = wan.get("verified_at", 0)
+                message = error or wan.get("error", "") or daily.get("error", "")
+                state = ("error" if message else "pending" if not wan.get("active") or not verified or now-verified > 15 else "active")
+            elif related:
+                state, message, verified = related["state"], related["message"], related["verified_at"]
+            elif iface == WAN_IFACE:
+                try:
+                    interfaces, message = _punishment_interfaces(iface)
+                    layouts, message = _inspect_managed_queues(interfaces, allow_cake=True) if interfaces else (None, message)
+                    state, verified = ("active", now) if layouts is not None else ("error", 0)
+                except (subprocess.TimeoutExpired, OSError, ValueError) as exc:
+                    state, message = "error", str(exc)
+            else:
+                state, message = "unknown", "Queue not verified"
+        queue_rows.append({**_sqm_for_ui(queue), "enabled": enabled,
+                           "name": names.get(iface) or networks.get(iface) or iface,
+                           "state": state, "message": message, "verified_at": verified,
+                           "daily_active": enabled and bool(daily.get("active"))})
     with _qos_status_lock:
         global _qos_status_data
         _qos_status_data = {"checked_at": now, "networks": rows,
-                            "queues": [{"interface": q.get("interface", ""), "enabled": q.get("enabled") == "1"}
-                                       for q in queues], "error": error}
+                            "queues": queue_rows, "error": error}
 
 
 @app.route("/api/qos/status")
@@ -3801,7 +4223,7 @@ def qos_status():
     age = time.time() - data["checked_at"] if data["checked_at"] else None
     stale = age is None or age > max(15, AUTOTRUST_INTERVAL * 4)
     if stale:
-        for row in data["networks"]:
+        for row in data["networks"] + data.get("queues", []):
             row.update(state="unknown", message="Runtime check is stale")
     return jsonify(ok=True, stale=stale, age=age, **data)
 
@@ -3857,6 +4279,14 @@ def _reconcile_punishment(policy, limits, clients, blocked, trusted, interface=N
                 if saved.get("active") or saved.get("error"):
                     _save_punishment_tc_state({**saved, "active": False, "error": "", "pending": {},
                                               "verified_at": 0}, iface)
+                continue
+            if routes.get(iface, {}).get("error") == "No enabled LAN or WAN SQM queue":
+                saved = _punishment_tc_state(iface)
+                pending = {mac: "SQM off; enable LAN or WAN CAKE for device caps, delay and Punish."
+                           for mac in groups.get(iface, {})}
+                next_state = {**saved, "active": False, "error": "", "pending": pending, "verified_at": 0}
+                if next_state != saved:
+                    _save_punishment_tc_state(next_state, iface)
                 continue
             try:
                 if iface == primary:
@@ -4214,11 +4644,18 @@ def _traffic_history(data, end):
 
 
 def _traffic_overview(include_history=False):
-    with _wan_traffic_lock:
-        data = _wan_traffic_state()
-        at = data["updated_at"] or int(time.time())
+    global _wan_usage_data
+    with _wan_usage_lock:
+        if _wan_usage_data is None:
+            _wan_usage_data = _load_wan_usage()
+        data = _client_traffic_state(_wan_usage_data)
+        at = int(time.time())
+        stale = (not data["updated_at"] or at - data["updated_at"] >= WAN_USAGE_MAX_GAP or
+                 _wan_usage_data["sampler_id"] != WAN_USAGE_SAMPLER_ID)
         result = {"interface": WAN_IFACE, "updated_at": data["updated_at"],
-                  "tracking_since": data["started_at"], "live": data["live"],
+                  "scope": "clients", "address_family": "IPv4", "stale": stale,
+                  "tracking_since": data["started_at"],
+                  "live": {"download": None, "upload": None} if stale else data["live"],
                   "today": data["days"].get(_traffic_time(at).strftime("%Y-%m-%d"),
                                              {"download": 0, "upload": 0}),
                   "month": data["months"].get(_traffic_time(at).strftime("%Y-%m"),
@@ -4227,6 +4664,45 @@ def _traffic_overview(include_history=False):
             result["history"] = _traffic_history(data, at)
             result["recent_start_at"] = at - (TRAFFIC_HISTORY_SECS - 1)
         return copy.deepcopy(result)
+
+
+def _client_traffic_state(state):
+    """Client-only Overview has its own baseline; never import raw WAN totals."""
+    data = state.get("overview")
+    if not isinstance(data, dict) or data.get("version") != 1:
+        data = {"version": 1, "started_at": 0, "updated_at": 0,
+                "live": {"download": None, "upload": None},
+                "history_unit": "bytes_per_second", "history": [], "history_24h": [],
+                "days": {}, "months": {}}
+        state["overview"] = data
+    return data
+
+
+def _record_client_traffic(state, active_macs, at, deltas, available, continuous):
+    """Record the same capped client deltas used by the individual WAN meters.
+
+    Called under the usage lock; persistence is part of wan-usage.json and
+    happens after releasing the lock. A fresh empty snapshot records real
+    zeroes, whereas collector/conntrack failures and baselines leave gaps.
+    """
+    data = _client_traffic_state(state)
+    if at <= data["updated_at"]:
+        return
+    data["started_at"] = data["started_at"] or at
+    rates = {"download": None, "upload": None}
+    if available and (continuous or not active_macs):
+        # The accounting state has already published this sample. Its rates
+        # use the actual router timestamp interval, not the browser clock.
+        totals = {direction: sum(deltas.get(mac, {}).get(direction, 0) for mac in active_macs)
+                  for direction in ("download", "upload")}
+        rates = {direction: sum(state["rates"].get(mac, {}).get(direction, 0) for mac in active_macs)
+                 for direction in ("download", "upload")}
+        _add_traffic_usage(data, at, totals["download"], totals["upload"])
+    data["live"] = rates
+    _traffic_bucket(data, at).update(rates)
+    _wan_traffic_history_bucket(data, at).update(rates)
+    data["updated_at"] = at
+    _prune_traffic(data, at)
 
 
 def _client_snapshot_loop():
@@ -4250,18 +4726,18 @@ def _client_snapshot_loop():
 
 
 def _wan_sampling_inputs():
-    """Return the current map only when the collector has a fresh snapshot."""
+    """None means unavailable; an empty map means a confirmed empty client list."""
     with _clients_cache_lock:
         snapshot = _clients_cache_data
     if not isinstance(snapshot, dict) or snapshot.get("ok") is not True:
-        return {}, set()
+        return None, set()
     try:
         if time.time() - int(snapshot["sampled_at"]) > max(CLIENTS_SNAPSHOT_INTERVAL * 3, 10):
-            return {}, set()
+            return None, set()
     except (KeyError, TypeError, ValueError):
-        return {}, set()
+        return None, set()
     clients = snapshot.get("_live_clients")
-    return _wan_usage_inputs(clients.values(), int(time.time())) if isinstance(clients, dict) else ({}, set())
+    return _wan_usage_inputs(clients.values(), int(time.time())) if isinstance(clients, dict) else (None, set())
 
 
 def _set_overview_clients(data, now):
@@ -4310,8 +4786,8 @@ def _traffic_loop():
         ip_to_mac, active_macs = _wan_sampling_inputs() if usage_due else ({}, set())
         sample = None
         try:
-            if traffic_due or ip_to_mac:
-                sample = _read_traffic_counters(include_flows=bool(ip_to_mac), ip_to_mac=ip_to_mac)
+            if traffic_due or usage_due:
+                sample = _read_traffic_counters(include_flows=usage_due, ip_to_mac=ip_to_mac)
         except Exception:
             log.exception("combined WAN read failed")
         if sample:
@@ -4320,7 +4796,7 @@ def _traffic_loop():
                     _sample_traffic(sample)
                 except Exception:
                     log.exception("traffic sampler error")
-            if ip_to_mac:
+            if usage_due:
                 try:
                     _wan_usage_snapshot(ip_to_mac, active_macs, sample["at"], raw=sample["flow_raw"])
                 except Exception:
@@ -4671,6 +5147,9 @@ def _control_once_locked():
         collection_started = (_clients_cache_data or {}).get("_collection_started_at", 0)
         sample_at = (_clients_cache_data or {}).get("sampled_at", 0)
     blocked, trusted = _load_blocked(), _trusted_macs()
+    # Remember first connections while Off too; reconnecting later must never
+    # turn a previously known device into a new one when the switch is enabled.
+    punishment_policy = _auto_punish_connections(clients, blocked, trusted)
     ok, message = _reconcile_punishment(punishment_policy, lim, clients, blocked, trusted)
     if not ok:
         log.warning("managed queues pending: %s", message)
@@ -4782,6 +5261,10 @@ def _control_once_locked():
 def _auto_trust_loop():
     while True:
         try:
+            _refresh_sqm_cache()
+        except Exception:
+            log.exception("SQM settings refresh error")
+        try:
             _control_once()
         except Exception:
             log.exception("control loop error")
@@ -4789,6 +5272,10 @@ def _auto_trust_loop():
             _reconcile_sqm_conditional()
         except Exception:
             log.exception("daily SQM rule error")
+        try:
+            _refresh_sqm_cache()
+        except Exception:
+            log.exception("SQM settings refresh error")
         time.sleep(AUTOTRUST_INTERVAL)
 
 
@@ -4899,26 +5386,48 @@ def punishment_policy():
     body = request.get_json(force=True)
     if not isinstance(body, dict):
         return jsonify(ok=False, output="policy must be an object"), 400
-    with _punishment_lock:
-        policy = _load_punishment_policy()
-        try:
-            delay = body.get("delay_ms", policy["delay_ms"])
-            if isinstance(delay, bool):
-                raise ValueError("delay_ms")
-            delay = int(delay)
-            if not 1 <= delay <= PUNISH_DELAY_MAX:
-                raise ValueError("delay_ms")
-            loss_pct = _clean_loss_pct(body.get("loss_pct", policy["loss_pct"]))
-            download = _kbytes_to_kbits(body.get("download", _kbits_to_kbytes(policy["download"])),
-                                         PUNISH_CAP_MAX)
-            upload = _kbytes_to_kbits(body.get("upload", _kbits_to_kbytes(policy["upload"])),
-                                       PUNISH_CAP_MAX)
-            if not download or not upload:
-                raise ValueError("caps")
-        except (TypeError, ValueError) as error:
-            return jsonify(ok=False, output=f"invalid punishment policy: {error}"), 400
-        policy.update(delay_ms=delay, loss_pct=loss_pct, download=download, upload=upload)
-        _save_punishment_policy(policy)
+    # Serialize enabling and its baseline with the connection controller.
+    with _auth_control_lock:
+        # Snapshot before the policy lock; do not take network/cache locks inside it.
+        baseline = None
+        if body.get("auto_punish_new") is True:
+            current = _live_clients_for_control()
+            if current is not None:
+                baseline = sorted(_punishment_online_clients(list(current)))
+        with _punishment_lock:
+            policy = _load_punishment_policy()
+            try:
+                delay = body.get("delay_ms", policy["delay_ms"])
+                if isinstance(delay, bool):
+                    raise ValueError("delay_ms")
+                delay = int(delay)
+                if not 1 <= delay <= PUNISH_DELAY_MAX:
+                    raise ValueError("delay_ms")
+                loss_pct = _clean_loss_pct(body.get("loss_pct", policy["loss_pct"]))
+                download = _kbytes_to_kbits(body.get("download", _kbits_to_kbytes(policy["download"])),
+                                             PUNISH_CAP_MAX)
+                upload = _kbytes_to_kbits(body.get("upload", _kbits_to_kbytes(policy["upload"])),
+                                           PUNISH_CAP_MAX)
+                if not download or not upload:
+                    raise ValueError("caps")
+                automatic = body.get("auto_punish_new", policy["auto_punish_new"])
+                if not isinstance(automatic, bool):
+                    raise ValueError("auto_punish_new")
+            except (TypeError, ValueError) as error:
+                return jsonify(ok=False, output=f"invalid punishment policy: {error}"), 400
+            policy.update(delay_ms=delay, loss_pct=loss_pct, download=download, upload=upload)
+            if automatic != policy["auto_punish_new"]:
+                policy["auto_punish_new"] = automatic
+                if automatic and baseline is not None:
+                    known = (set(policy["auto_seen"]) if policy["auto_seen"] is not None
+                             else _punishment_history_macs(policy))
+                    policy["auto_seen"] = sorted(known | set(baseline))
+            _save_punishment_policy(policy)
+    if set(body) == {"auto_punish_new"}:
+        # This arms future connections; it must not reshape existing users or
+        # submit unsaved form values merely because the toggle was clicked.
+        return jsonify(ok=True, output="Auto-punish " + ("on" if automatic else "off"),
+                       **_punishment_for_ui(policy))
     ok, message = _refresh_punishment()
     return jsonify(ok=ok, output=message,
                    **_punishment_for_ui(policy))

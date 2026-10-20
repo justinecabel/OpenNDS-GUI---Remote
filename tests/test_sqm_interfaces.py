@@ -30,7 +30,7 @@ class SqmInterfaceTests(unittest.TestCase):
 
     def test_get_selects_primary_by_interface_even_when_extra_queue_is_first(self):
         self.queues(extra_first=True)
-        data = self.client.get('/api/sqm', headers=self.headers).get_json()
+        data = self.client.get('/api/sqm?refresh=1', headers=self.headers).get_json()
         self.assertEqual(data['config']['interface'], 'br-lan')
         self.assertEqual(data['config']['download'], '12500')
         self.assertEqual(len(data['queues']), 2)
@@ -41,7 +41,7 @@ class SqmInterfaceTests(unittest.TestCase):
 
     def test_get_extra_loads_its_own_rates(self):
         self.queues()
-        data = self.client.get('/api/sqm?interface=eth2', headers=self.headers).get_json()
+        data = self.client.get('/api/sqm?refresh=1&interface=eth2', headers=self.headers).get_json()
         self.assertEqual(data['config']['download'], '1000')
         self.assertEqual(data['config']['upload'], '500')
         self.assertEqual(data['config']['section'], 'guest')
@@ -54,7 +54,7 @@ class SqmInterfaceTests(unittest.TestCase):
             'download': 20000, 'upload': 16000,
             'baseline': {'download': 100000, 'upload': 50000}}}}
         self.state('SQM_CONDITIONAL_FILE', policy)
-        data = self.client.get('/api/sqm', headers=self.headers).get_json()
+        data = self.client.get('/api/sqm?refresh=1', headers=self.headers).get_json()
         self.assertEqual(data['config']['download'], '2500')
         self.assertEqual(data['config']['upload'], '2000')
         self.assertEqual(data['baseline_config']['download'], '12500')
@@ -69,7 +69,7 @@ class SqmInterfaceTests(unittest.TestCase):
         self.queues()
         self.state('SQM_CONDITIONAL_FILE', {'version': 2, 'rules': {
             'br-lan': {'enabled': True, 'active': False, 'download': 20000, 'upload': 20000}}})
-        data = self.client.get('/api/sqm', headers=self.headers).get_json()
+        data = self.client.get('/api/sqm?refresh=1', headers=self.headers).get_json()
         self.assertEqual(data['baseline_config'], data['config'])
         self.assertEqual(data['baseline_queues'], data['queues'])
 
@@ -78,7 +78,7 @@ class SqmInterfaceTests(unittest.TestCase):
         self.state('SQM_CONDITIONAL_FILE', {'version': 2, 'rules': {
             'eth2': {'enabled': False, 'active': False, 'placement': 'lan',
                      'baseline': {'download': 32000, 'upload': 0}, 'error': 'restore failed'}}})
-        data = self.client.get('/api/sqm?interface=eth2', headers=self.headers).get_json()
+        data = self.client.get('/api/sqm?refresh=1&interface=eth2', headers=self.headers).get_json()
         self.assertEqual(data['config']['download'], '1000')
         self.assertEqual(data['baseline_config']['download'], '4000')
         self.assertEqual(data['baseline_config']['upload'], '0')
@@ -91,7 +91,7 @@ class SqmInterfaceTests(unittest.TestCase):
             'br-lan': {'enabled': True, 'active': True, 'placement': 'wan',
                        'baseline': {'download': 0, 'upload': 0},
                        'baselines': {'lan': {'download': 80000, 'upload': 40000}}}}})
-        data = self.client.get('/api/sqm?interface=eth0', headers=self.headers).get_json()
+        data = self.client.get('/api/sqm?refresh=1&interface=eth0', headers=self.headers).get_json()
         self.assertEqual(data['baseline_config'], data['config'])
         self.assertEqual(data['baseline_queues'][0]['download'], '10000')
         self.assertEqual(data['baseline_queues'][0]['upload'], '5000')
@@ -128,7 +128,7 @@ class SqmInterfaceTests(unittest.TestCase):
         self.patch('_refresh_punishment', Mock(return_value=(True, 'active')))
         configs = self.queues()
         app._read_sqm_queues.return_value = (configs[:1], '')
-        data = self.client.get('/api/sqm?interface=eth2', headers=self.headers).get_json()
+        data = self.client.get('/api/sqm?refresh=1&interface=eth2', headers=self.headers).get_json()
         self.assertFalse(data['configured'])
         self.assertTrue(self.client.put('/api/sqm', headers=self.headers, json=self.body()).get_json()['ok'])
         command = self.commands[-1]
@@ -140,7 +140,7 @@ class SqmInterfaceTests(unittest.TestCase):
         configs = self.queues()
         app._read_sqm_queues.return_value = ([configs[0], configs[1], {**configs[1], 'section': 'another'}], '')
         self.assertEqual(self.client.put('/api/sqm', headers=self.headers, json=self.body()).status_code, 409)
-        self.assertEqual(self.client.get('/api/sqm?interface=eth2', headers=self.headers).status_code, 409)
+        self.assertEqual(self.client.get('/api/sqm?refresh=1&interface=eth2', headers=self.headers).status_code, 409)
         for iface in ('eth2;reboot', 'missing', 'lo', 'ifb4br-lan'):
             self.assertEqual(self.client.put('/api/sqm', headers=self.headers, json=self.body(iface)).status_code, 400)
         self.assertEqual(self.commands, [])
@@ -148,7 +148,7 @@ class SqmInterfaceTests(unittest.TestCase):
     def test_failed_read_does_not_create_queue_and_failed_apply_is_reported(self):
         self.queues()
         app._read_sqm_queues.return_value = ([], 'read failed')
-        self.assertEqual(self.client.get('/api/sqm', headers=self.headers).status_code, 502)
+        self.assertEqual(self.client.get('/api/sqm?refresh=1', headers=self.headers).status_code, 502)
         self.assertEqual(self.client.put('/api/sqm', headers=self.headers, json=self.body()).status_code, 502)
         self.assertEqual(self.commands, [])
         self.queues()

@@ -42,7 +42,7 @@
 <div class="metric"><div class="metric-label">WAN (day)</div><div class="metric-value" id="ov_today">—</div></div>
 <div class="metric"><div class="metric-label">WAN (month)</div><div class="metric-value" id="ov_month">—</div></div>
 </div>
-<div class="chart-heading"><h3>WAN · <span id="overview_chart_label">1h</span></h3><label>Range <select id="overview_chart_range" onchange="setOverviewRange(this.value)"><option value="60">1m</option><option value="300">5m</option><option value="900">15m</option><option value="1800">30m</option><option value="3600" selected>1h</option><option value="21600">6h</option><option value="86400">24h</option></select></label></div>
+<div class="chart-heading"><h3>Client WAN · <span id="overview_chart_label">1h</span></h3><label>Range <select id="overview_chart_range" onchange="setOverviewRange(this.value)"><option value="60">1m</option><option value="300">5m</option><option value="900">15m</option><option value="1800">30m</option><option value="3600" selected>1h</option><option value="21600">6h</option><option value="86400">24h</option></select></label></div>
 <div class="traffic-legend"><span><i class="traffic-down"></i>DL</span><span><i class="traffic-up"></i>UL</span></div>
 <canvas id="trafficChart" role="img" aria-label="Download and upload traffic waves for the last 60 minutes"></canvas>
 <p id="overviewnote"></p>
@@ -51,7 +51,7 @@
 
 <div id="client_network_tabs" class="client-network-tabs" role="tablist" aria-label="Client interfaces"></div>
 <div class="client-toolbar"><label class="client-search"><span class="visually-hidden">Search devices</span><input id="client_search" type="search" placeholder="Search name, IP or MAC" autocomplete="off" aria-controls="ctable"></label><div class="client-filters" role="group" aria-label="Device status"><button class="btn btn-ghost" type="button" data-client-filter="all" aria-pressed="true">All</button><button class="btn btn-ghost" type="button" data-client-filter="online" aria-pressed="false">Online</button><button class="btn btn-ghost" type="button" data-client-filter="offline" aria-pressed="false">Offline</button></div><span id="client_results" class="client-results"></span></div>
-<div class="client-table-wrap" id="client_table_wrap" role="tabpanel" tabindex="0"><table><thead><tr><th></th><th>Host</th><th>MAC</th><th>IP</th><th>State</th><th>Seen</th><th>DL<br><small>day / month</small></th><th>UL<br><small>day / month</small></th><th>Delay<br><small>ms</small></th><th class="client-rate-down">DL/s</th><th class="client-rate-up">UL/s</th><th class="client-actions"><span class="client-actions-label" aria-hidden="true">Actions</span><span class="client-actions-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="ctable"></tbody></table></div><div id="client_panbar" class="client-panbar" tabindex="0" aria-label="Pan client table horizontally"><div></div></div><dialog id="client_actions_dialog" class="manager-dialog client-actions-dialog" aria-labelledby="client_actions_title"><div class="dialog-heading"><div><h4 id="client_actions_title"></h4><p id="client_actions_identity"></p></div><form method="dialog"><button id="client_actions_close" type="submit" class="btn btn-ghost btn-sm">Close</button></form></div><div id="client_actions_buttons" class="client-actions-grid"></div></dialog><dialog id="client_detail" class="manager-dialog client-detail"><div class="dialog-heading"><div><h4 id="client_detail_title"></h4><p>WAN · <span id="client_chart_label">1h</span></p></div><form method="dialog"><button type="submit" class="btn btn-ghost btn-sm">Close</button></form></div><div class="chart-heading"><div class="traffic-legend"><span><i class="traffic-down"></i>DL</span><span><i class="traffic-up"></i>UL</span></div><label>Range <select id="client_chart_range" onchange="setClientRange(this.value)"><option value="60">1m</option><option value="300">5m</option><option value="900">15m</option><option value="1800">30m</option><option value="3600" selected>1h</option><option value="21600">6h</option><option value="86400">24h</option></select></label></div><canvas id="clientTrafficChart" class="client-traffic-chart" role="img" aria-label="Client download and upload traffic for the last 1 hour"></canvas></dialog></section>
+<div class="client-table-wrap" id="client_table_wrap" role="tabpanel" tabindex="0"><table><thead><tr><th></th><th>Host</th><th>MAC</th><th>IP</th><th>State</th><th>Seen</th><th>DL<br><small>day / month</small></th><th>UL<br><small>day / month</small></th><th>Delay<br><small>ms</small></th><th class="client-rate-down">DL/s</th><th class="client-rate-up">UL/s</th><th class="client-actions"><span class="client-actions-label" aria-hidden="true">Actions</span><span class="client-actions-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="ctable"></tbody></table></div><div id="client_panbar" class="client-panbar" tabindex="0" aria-label="Pan client table horizontally"><div></div></div><dialog id="client_actions_dialog" class="manager-dialog client-actions-dialog" aria-labelledby="client_actions_title"><div class="dialog-heading"><div><h4 id="client_actions_title"></h4><p id="client_actions_identity"></p></div><form method="dialog"><button id="client_actions_edit" type="button" class="btn btn-secondary btn-sm">Edit name</button> <button id="client_actions_close" type="submit" class="btn btn-ghost btn-sm">Close</button></form></div><div id="client_actions_buttons" class="client-actions-grid"></div></dialog><dialog id="client_detail" class="manager-dialog client-detail"><div class="dialog-heading"><div><h4 id="client_detail_title"></h4><p>WAN · <span id="client_chart_label">1h</span></p></div><form method="dialog"><button id="client_detail_edit" type="button" class="btn btn-secondary btn-sm">Edit name</button> <button type="submit" class="btn btn-ghost btn-sm">Close</button></form></div><div class="chart-heading"><div class="traffic-legend"><span><i class="traffic-down"></i>DL</span><span><i class="traffic-up"></i>UL</span></div><label>Range <select id="client_chart_range" onchange="setClientRange(this.value)"><option value="60">1m</option><option value="300">5m</option><option value="900">15m</option><option value="1800">30m</option><option value="3600" selected>1h</option><option value="21600">6h</option><option value="86400">24h</option></select></label></div><canvas id="clientTrafficChart" class="client-traffic-chart" role="img" aria-label="Client download and upload traffic for the last 1 hour"></canvas></dialog></section>
 <section id="status" class="admin-page settings-page">
 <div class="admin-heading"><div><h2>Status &amp; Config</h2></div><button onclick="loadStatus()" class="btn btn-ghost" type="button" aria-label="Refresh status">Refresh</button></div>
 <div class="settings-layout">
@@ -103,38 +103,41 @@
 <section id="punishment" class="admin-page settings-page">
 <div class="admin-heading"><div><h2>Punishment</h2></div><button onclick="loadPunishment()" class="btn btn-ghost" type="button" aria-label="Reload policy">Reload</button></div>
 <div class="settings-layout">
-<article class="settings-section"><div class="settings-heading"><h3>Punishment policy</h3><p class="hint">Applies to devices you punish in Clients. Delay and loss affect downloads; CAKE SQM is required.</p></div><div class="settings-body"><form onsubmit="event.preventDefault();savePunishment()"><div class="admin-fields">
+<article class="settings-section"><div class="settings-heading"><h3>Punishment policy</h3><p class="hint">Delay/loss affect downloads. Requires CAKE SQM.</p></div><div class="settings-body"><label class="sqm-summary-switch"><span>Auto-punish new users</span><input id="pun_auto" type="checkbox" role="switch" aria-describedby="pun_auto_note" onchange="toggleAutoPunish(this.checked)" disabled><span id="pun_auto_state" aria-hidden="true">Off</span></label><p id="pun_auto_note" class="hint">First connection only.</p><p id="pun_auto_out" class="admin-result" role="status"></p><form onsubmit="event.preventDefault();savePunishment()"><div class="admin-fields">
 <label class="admin-field"><span class="setting-label">Added delay (ms)</span><input id="pun_delay" type="number" min="1" max="10000" step="1" value="100" required></label>
 <label class="admin-field"><span class="setting-label">Packet loss (%)</span><input id="pun_loss" type="number" min="0" max="100" step="any" value="0" required></label>
 <label class="admin-field"><span class="setting-label">Download cap (KB/s)</span><input id="pun_down" type="number" min="0.125" step="any" value="128" required></label>
 <label class="admin-field"><span class="setting-label">Upload cap (KB/s)</span><input id="pun_up" type="number" min="0.125" step="any" value="64" required></label>
-</div><div class="admin-actions"><button id="pun_save" class="btn btn-primary" type="submit" aria-label="Save punishment policy">Save policy</button></div></form><p id="punout" class="admin-result" role="status"></p></div></article>
-<article class="settings-section"><div class="settings-heading"><div class="admin-card-head"><h3>Affected devices</h3><span id="pun_badge" class="admin-badge">Checking</span></div></div><div class="settings-body"><div class="admin-actions"><button onclick="show('clients')" class="btn btn-secondary" type="button" aria-label="Open Clients">Clients</button><button onclick="show('sqm')" class="btn btn-secondary" type="button" aria-label="Open SQM">SQM</button></div><p class="admin-note">Saved per MAC. The lower of the Limits and Punishment caps applies. Trusted and blocked devices are excluded.</p><p id="pun_tc_status" class="admin-result"></p></div></article>
+</div><div class="admin-actions"><button id="pun_save" class="btn btn-primary" type="submit" aria-label="Save punishment policy" disabled>Save policy</button></div></form><p id="punout" class="admin-result" role="status"></p></div></article>
+<article class="settings-section"><div class="settings-heading"><div class="admin-card-head"><h3>Affected devices</h3><span id="pun_badge" class="admin-badge">Checking</span></div></div><div class="settings-body"><div class="admin-actions"><button onclick="show('clients')" class="btn btn-secondary" type="button" aria-label="Open Clients">Clients</button><button onclick="show('sqm')" class="btn btn-secondary" type="button" aria-label="Open SQM">SQM</button></div><p class="admin-note">Lower cap wins. Trusted/blocked devices excluded.</p><p id="pun_tc_status" class="admin-result"></p></div></article>
 </div></section>
 <section id="sqm" class="sqm-page admin-page settings-page">
 <div class="sqm-heading"><div><h2>SQM</h2><p id="sqm_direction_note">Bandwidth and daily limits by interface.</p></div><div class="sqm-tools"><label for="sqm_unit">Units</label><select id="sqm_unit" onchange="changeSqmUnit(this.value)"><option value="KB/s">KB/s</option><option value="Mb/s">Mb/s</option><option value="MB/s">MB/s</option></select><button onclick="loadSqm()" class="btn btn-ghost" type="button" aria-label="Reload settings">Reload</button></div></div>
-<article class="settings-section qos-status-card"><div class="settings-heading"><h3>Limits status</h3><p class="hint">Enabled LAN queues take precedence. Other LANs use enabled WAN CAKE automatically.</p></div><div id="qos_status_sqm" class="qos-status-list" role="list" aria-label="SQM policy runtime status">Checking queues…</div></article>
+<div id="sqm_loading" class="sqm-loading" role="status" aria-label="Loading SQM"><span class="ui-spinner" aria-hidden="true"></span></div><p id="sqm_load_error" class="admin-result" role="status" hidden></p>
+<div id="sqm_content" hidden>
+<article id="sqm_status_card" class="settings-section qos-status-card" hidden><div class="settings-heading"><h3>SQM status</h3></div><div id="qos_status_sqm" class="qos-status-list" role="list" aria-label="SQM policy runtime status">Checking queues…</div></article>
 <div class="settings-layout">
 
-<article id="sqm_summary" class="settings-section"><div class="settings-heading sqm-list-heading"><h3>Interfaces</h3><button id="sqm_add" class="btn btn-secondary" type="button" onclick="openSqmAdd()" disabled>Add interface</button></div><div class="settings-body"><div id="sqm_summary_queues" class="sqm-summary-queues" role="list" aria-label="SQM interface rules"></div><p id="sqm_summary_base_error" class="sqm-summary-error" role="status"></p><p id="sqm_summary_rule_error" class="sqm-summary-error" role="status"></p></div></article>
-<article id="sqm_interface" class="settings-section" hidden><div class="settings-heading sqm-editor-heading"><div><h3 id="sqm_interface_title" tabindex="-1">Interface</h3><input id="sqm_if" type="hidden"></div><button id="sqm_back" class="btn btn-ghost" type="button" onclick="closeSqmEditor()">Back to interfaces</button></div><div class="settings-body"><div id="sqm_base" class="sqm-interface-policy"><h4>Baseline</h4><p class="hint">Normal rates. An active Daily rule takes precedence. Set 0 for unlimited.</p><label class="sqm-toggle"><span>Enable queue</span><input type="checkbox" id="sqm_en"></label>
+<article id="sqm_mode_settings" class="settings-section"><div class="settings-heading"><h3>SQM mode</h3></div><div class="settings-body"><label class="sqm-field"><span class="setting-label">Mode</span><select id="sqm_mode" onchange="draftSqmMode()" disabled><option value="single">Single interface</option><option value="multiple" selected>Multiple interfaces</option></select></label><label id="sqm_mode_interface_field" class="sqm-field" hidden><span class="setting-label">Interface</span><select id="sqm_mode_interface" onchange="draftSqmMode()" disabled></select></label><p id="sqm_mode_note" class="hint">Manage queues independently.</p><div class="sqm-actions"><button id="sqm_mode_apply" class="btn btn-primary" type="button" onclick="saveSqmMode()" disabled>Apply mode</button></div><p id="sqm_mode_out" class="admin-result" role="status"></p></div></article>
+<article id="sqm_summary" class="settings-section"><div class="settings-heading sqm-list-heading"><h3>Interfaces</h3><button id="sqm_add" class="btn btn-secondary" type="button" onclick="openSqmAdd()" disabled>Add interface</button></div><div class="settings-body"><div id="sqm_summary_queues" class="sqm-summary-queues" role="list" aria-label="SQM interface rules"></div><p id="sqm_summary_out" class="admin-result" role="status"></p><p id="sqm_summary_base_error" class="sqm-summary-error" role="status"></p><p id="sqm_summary_rule_error" class="sqm-summary-error" role="status"></p></div></article>
+<dialog id="sqm_interface" class="manager-dialog sqm-editor-dialog" aria-labelledby="sqm_interface_title" hidden><div class="settings-heading"><div class="sqm-editor-heading"><div><h3 id="sqm_interface_title" tabindex="-1">Interface</h3><input id="sqm_if" type="hidden"></div><button id="sqm_back" class="btn btn-ghost" type="button" onclick="closeSqmEditor()"><span aria-hidden="true">←</span> Back to interfaces</button></div><div class="sqm-editor-tools"><span id="sqm_editor_note" class="hint"></span><label for="sqm_editor_unit">Units</label><select id="sqm_editor_unit" onchange="changeSqmUnit(this.value)"><option>KB/s</option><option>Mb/s</option><option>MB/s</option></select></div></div><div class="settings-body"><div id="sqm_identity" class="sqm-interface-policy"><label class="sqm-field"><span class="setting-label">Display name</span><input id="sqm_name" maxlength="64" placeholder="Network name"></label><div class="sqm-actions"><button id="sqm_name_save" class="btn btn-secondary" type="button" onclick="saveSqmName()">Save name</button><span id="sqm_name_out" class="limit-status" role="status"></span></div></div><div id="sqm_base" class="sqm-interface-policy"><h4>Baseline</h4><p class="hint">Normal rates. An active Daily rule takes precedence. Set 0 for unlimited.</p><label class="sqm-toggle"><span>Enable queue</span><input type="checkbox" id="sqm_en"></label>
 <div class="sqm-fields">
 <label class="sqm-field"><span class="setting-label"><span id="sqm_ingress_label">UL</span> <span class="sqm-direction">Ingress <span class="sqm-unit sqm-rate-unit">KB/s</span></span></span><input id="sqm_down" type="number" min="0" step="1" value="0"></label>
 <label class="sqm-field"><span class="setting-label"><span id="sqm_egress_label">DL</span> <span class="sqm-direction">Egress <span class="sqm-unit sqm-rate-unit">KB/s</span></span></span><input id="sqm_up" type="number" min="0" step="1" value="0"></label>
 <label class="sqm-field"><span class="setting-label">Queue discipline</span><select id="sqm_qd"><option>cake</option><option>fq_codel</option></select></label>
 <label class="sqm-field"><span class="setting-label">Queue script</span><select id="sqm_sc"><option>piece_of_cake.qos</option><option>layer_cake.qos</option><option>simple.qos</option><option>simplest.qos</option></select></label>
 </div><div class="sqm-actions"><button onclick="saveSqm()" class="btn btn-primary" type="button" aria-label="Apply baseline">Apply baseline</button></div><pre id="sqmout" class="sqm-output"></pre></div>
-<div id="sqm_daily" class="sqm-interface-policy"><h4>Daily</h4><p class="hint" id="sqm_rule_scope">Per-interface WAN usage · Resets at midnight.</p><label class="sqm-toggle"><span>Enable daily limit</span><input type="checkbox" id="sqm_rule_en"></label>
+<div id="sqm_daily" class="sqm-interface-policy"><h4>Daily</h4><p id="sqm_daily_disabled_note" class="hint" hidden>Enable Baseline to use Daily.</p><p class="hint" id="sqm_rule_scope">Per-interface WAN usage · Resets at midnight.</p><label class="sqm-toggle"><span>Enable daily limit</span><input type="checkbox" id="sqm_rule_en"></label>
 <div class="sqm-fields">
 <label class="sqm-field"><span class="setting-label">Threshold <span class="sqm-direction">DL + UL <span class="sqm-unit">GB</span></span></span><input id="sqm_rule_gb" type="number" min="0" step="0.01" value="1"></label>
-<label class="sqm-field"><span class="setting-label">Upload after threshold <span class="sqm-direction">Ingress <span class="sqm-unit sqm-rate-unit">KB/s</span></span></span><input id="sqm_rule_down" type="number" min="0" step="1" value="1024"></label>
-<label class="sqm-field"><span class="setting-label">Download after threshold <span class="sqm-direction">Egress <span class="sqm-unit sqm-rate-unit">KB/s</span></span></span><input id="sqm_rule_up" type="number" min="0" step="1" value="512"></label>
-</div><div class="sqm-actions"><button onclick="saveSqmRule()" class="btn btn-primary" type="button" aria-label="Save daily rule">Save daily rule</button><button onclick="saveSqmRule(true)" class="btn btn-secondary" type="button" aria-label="Apply today (WAN rule)">Apply until midnight</button><span id="sqm_rule_out" class="limit-status"></span></div><p id="sqm_rule_note" class="sqm-note"></p></div><p id="sqm_daily_unavailable" class="hint" hidden>Daily WAN rules apply to discovered LAN interfaces.</p></div></article>
+<label class="sqm-field"><span class="setting-label"><span id="sqm_rule_ingress_label">Upload after threshold</span> <span class="sqm-direction">Ingress <span class="sqm-unit sqm-rate-unit">KB/s</span></span></span><input id="sqm_rule_down" type="number" min="0" step="1" value="1024"></label>
+<label class="sqm-field"><span class="setting-label"><span id="sqm_rule_egress_label">Download after threshold</span> <span class="sqm-direction">Egress <span class="sqm-unit sqm-rate-unit">KB/s</span></span></span><input id="sqm_rule_up" type="number" min="0" step="1" value="512"></label>
+</div><div class="sqm-actions"><button onclick="saveSqmRule()" class="btn btn-primary" type="button" aria-label="Save daily rule">Save daily rule</button><button onclick="saveSqmRule(true)" class="btn btn-secondary" type="button" aria-label="Apply today (WAN rule)">Apply until midnight</button><span id="sqm_rule_out" class="limit-status"></span></div><p id="sqm_rule_note" class="sqm-note"></p></div><p id="sqm_daily_unavailable" class="hint" hidden>Daily rules require a discovered LAN or the configured WAN interface.</p></div></dialog>
 
 </div>
 
 <dialog id="sqm_add_dialog" class="manager-dialog sqm-add-dialog" aria-labelledby="sqm_add_title"><div class="dialog-heading"><h4 id="sqm_add_title">Add interface</h4><form method="dialog"><button class="btn btn-ghost btn-sm" type="submit">Cancel</button></form></div><form onsubmit="event.preventDefault();addSqmInterface()"><label class="sqm-field"><span class="setting-label">Interface</span><select id="sqm_add_interface" required></select></label><p class="hint">Choose an interface, then set its bandwidth and daily limit. Changes apply when you save.</p><p id="sqm_add_error" class="admin-result" role="status"></p><div class="sqm-actions"><button id="sqm_add_continue" class="btn btn-primary" type="submit">Continue</button></div></form></dialog>
-
+</div>
 </section>
 <section id="logs" class="admin-page"><div class="admin-heading"><div><h2>Logs</h2></div><button onclick="loadLogs()" class="btn btn-ghost" type="button" aria-label="Refresh logs">Refresh</button></div><div class="log-legend" role="group" aria-label="Log severity colors"><span class="log-key log-error">Error</span><span class="log-key log-warning">Warning</span><span class="log-key log-notice">Notice</span><span class="log-key log-info">Info</span><span class="log-key log-debug">Debug</span></div><p id="logs_error" class="admin-result" role="status"></p><pre id="logout" class="admin-output log-output" tabindex="0" aria-label="Router logs"></pre></section>
 
@@ -146,7 +149,7 @@ const TAB_IDS=new Set(['overview','clients','status','portal','sqm','mode','limi
 const TAB_ALIASES={config:'status'};
 let current='overview';
 function requestedTab(){const rawHash=location.hash.slice(1),rawQuery=new URLSearchParams(location.search).get('tab'),hash=TAB_ALIASES[rawHash]||rawHash,query=TAB_ALIASES[rawQuery]||rawQuery;return TAB_IDS.has(hash)?hash:TAB_IDS.has(query)?query:'overview';}
-function show(id,updateUrl=true){id=TAB_ALIASES[id]||id;if(!TAB_IDS.has(id))id='overview';const previous=current;current=id;if(previous!==id)window.scrollTo(0,0);document.querySelectorAll('section').forEach(s=>s.classList.toggle('active',s.id==id));document.querySelectorAll('#main_nav [data-tab]').forEach(button=>{const active=button.dataset.tab===id;button.classList.toggle('active',active);if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});const activeLink=document.querySelector('#main_nav [data-tab="'+id+'"]');$('nav_current').textContent=activeLink.textContent.trim();$('nav_toggle').setAttribute('aria-label','Navigation · '+activeLink.textContent.trim());setNavOpen(false);syncClientPanbar();if(id==='clients'&&previous!=='clients')requestAnimationFrame(()=>{const wrap=$('client_table_wrap');if(wrap){wrap.scrollLeft=0;syncClientPanbar(wrap);}});if(updateUrl&&location.hash!==`#${id}`)history.pushState({tab:id},'',`#${id}`);
+function show(id,updateUrl=true){id=TAB_ALIASES[id]||id;if(!TAB_IDS.has(id))id='overview';const previous=current;if(previous!==id&&$('sqm_interface').open){rememberSqmDraft();$('sqm_interface').close();$('sqm_interface').hidden=true;}current=id;if(previous!==id)window.scrollTo(0,0);document.querySelectorAll('section').forEach(s=>s.classList.toggle('active',s.id==id));document.querySelectorAll('#main_nav [data-tab]').forEach(button=>{const active=button.dataset.tab===id;button.classList.toggle('active',active);if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});const activeLink=document.querySelector('#main_nav [data-tab="'+id+'"]');$('nav_current').textContent=activeLink.textContent.trim();$('nav_toggle').setAttribute('aria-label','Navigation · '+activeLink.textContent.trim());setNavOpen(false);syncClientPanbar();if(id==='clients'&&previous!=='clients')requestAnimationFrame(()=>{const wrap=$('client_table_wrap');if(wrap){wrap.scrollLeft=0;syncClientPanbar(wrap);}});if(updateUrl&&location.hash!==`#${id}`)history.pushState({tab:id},'',`#${id}`);
 const loading=({overview:loadOverview,clients:loadClients,status:loadStatusConfig,portal:loadHostedPortalStatus,logs:loadLogs,sqm:loadSqmForNavigation,mode:loadMode,limits:()=>limitsLoaded?Promise.resolve(true):loadLimits(),punishment:()=>loadPunishment(true)})[id]?.();return loading?.catch(error=>{const output={overview:'overviewnote',clients:'client_action_out',status:'statusout',portal:'portalout',logs:'logout',sqm:'sqmout',mode:'modeinfo',limits:'lim_default_out',punishment:'punout'};$(output[id]).textContent='Load failed: '+error.message;return false;});}
 function setNavOpen(open){const toggle=$('nav_toggle'),hadNavFocus=$('main_nav').contains(document.activeElement);$('site_header').classList.toggle('nav-open',open);toggle.setAttribute('aria-expanded',String(open));if(!open&&hadNavFocus&&matchMedia('(max-width: 1099px)').matches)toggle.focus();}
 $('nav_toggle').addEventListener('click',()=>setNavOpen($('nav_toggle').getAttribute('aria-expanded')!=='true'));
@@ -171,25 +174,52 @@ return rows.length?rows.join('\n'):output||'No status';
 }
 let statusPromise=null;
 async function loadStatus(){if(statusPromise)return statusPromise;statusPromise=(async()=>{try{const j=await api('/api/status');const output=j.output||'';$('statusout').textContent=j.ok?compactGatewayStatus(output):output||'Status failed';$('status_raw').textContent=output;$('status_badge').textContent=j.ok?'Live':'Error';$('status_badge').dataset.state=j.ok?'ready':'attention';}catch(e){$('statusout').textContent='Status failed: '+e.message;$('status_raw').textContent=$('statusout').textContent;$('status_badge').textContent='Error';$('status_badge').dataset.state='attention';}})().finally(()=>{statusPromise=null;});return statusPromise;}
-let qosStatusPromise=null,qosStatusData=null;
-function renderQosStatus(data){
- for(const id of ['qos_status_sqm','qos_status_limits']){
-  const list=$(id);list.replaceChildren();
-  if(!data?.networks?.length){list.textContent=data?.error||'Waiting for runtime checks…';continue;}
-  for(const row of data.networks){
-   const item=document.createElement('div');item.className='qos-status-row';item.setAttribute('role','listitem');
-   const identity=document.createElement('div'),name=document.createElement('strong'),detail=document.createElement('small'),badge=document.createElement('span');
-   name.textContent=(row.network||row.interface)+' · '+row.interface;
-   detail.textContent=(row.placement==='wan'?'WAN · '+row.queue_interface:row.placement==='lan'?'LAN · '+row.queue_interface:'No supported queue')+' · '+(row.clients||0)+' device policies'+(row.daily_active?' · Daily limit active':'');
-   identity.append(name,detail);badge.className='qos-status-state';const state=data.stale?'unknown':row.state;badge.dataset.state=state;
-   badge.textContent=({active:'Active',ready:'Ready',pending:'Pending',error:'Error',unknown:'Not verified'})[state]||'Not verified';
-   badge.title='Active means the kernel queues and classifiers were verified. Ready means no device or daily limits are currently active.';item.append(identity,badge);
-   if(row.message){const reason=document.createElement('small');reason.className='qos-status-message';reason.textContent=row.message;item.appendChild(reason);}
-   list.appendChild(item);
+let qosStatusPromise=null,qosStatusData=null,qosStatusError='';
+function renderQosBadge(badge,state,failed=false,queueList=true){
+ const loading=!failed&&(!state||['pending','unknown'].includes(state));
+ badge.dataset.state=state||'unknown';badge.classList.toggle('qos-status-loading',loading);badge.setAttribute('aria-busy',String(loading));
+ const label=loading?'':failed&&state==='unknown'?'Unavailable':({active:'Active',ready:queueList?'Active':'Ready',error:'Error',off:'Off'})[state]||'Unavailable';
+ if(badge.textContent!==label)badge.textContent=label;
+ badge.setAttribute('aria-label',loading?'Loading status':label);
+}
+function renderSqmSingleStatus(data){
+ for(const identity of document.querySelectorAll('[data-sqm-single-interface]')){
+  const iface=identity.dataset.sqmSingleInterface,row=data?.queues?.find(row=>row.interface===iface),badge=identity.querySelector('.qos-status-state'),diagnostics=identity.querySelector('.sqm-single-diagnostics');
+  const state=data?.stale?'unknown':row?.state||'unknown';renderQosBadge(badge,state,!!data?.error);
+  const message=data?.error||row?.message||(data&&!row?'No runtime status for '+iface:'');
+  const opened=!!diagnostics.querySelector('details[open]'),focused=diagnostics.contains(document.activeElement);diagnostics.replaceChildren();
+  if(message&&['error','pending','unknown'].includes(state)){
+   const details=document.createElement('details'),summary=document.createElement('summary'),text=document.createElement('pre');details.className='qos-status-message';details.open=opened;summary.textContent='Details';text.textContent=message;details.append(summary,text);diagnostics.appendChild(details);if(focused)summary.focus({preventScroll:true});
   }
  }
 }
-async function loadQosStatus(){if(qosStatusPromise)return qosStatusPromise;qosStatusPromise=(async()=>{try{const data=await api('/api/qos/status');if(!data.ok)throw Error(data.output||'Runtime check failed');qosStatusData=data;renderQosStatus(data);}catch(error){renderQosStatus({...(qosStatusData||{}),stale:true,error:'Status unavailable: '+error.message,networks:(qosStatusData?.networks||[]).map(row=>({...row,message:'Status unavailable: '+error.message}))});}})().finally(()=>{qosStatusPromise=null;});return qosStatusPromise;}
+function renderQosStatus(data){
+ for(const id of ['qos_status_sqm','qos_status_limits']){
+  const list=$(id),queueList=id==='qos_status_sqm',rows=queueList&&data?.queues?.some(row=>row.state)?data.queues:data?.networks;
+  const opened=new Set([...list.querySelectorAll('[data-qos-interface]:has(details[open])')].map(row=>row.dataset.qosInterface));
+  const focused=list.contains(document.activeElement)?document.activeElement.closest('[data-qos-interface]')?.dataset.qosInterface:null;const fragment=document.createDocumentFragment();let focusTarget=null;
+  if(!rows?.length){list.replaceChildren();if(data?.error)list.textContent=data.error;else{const spinner=document.createElement('span');spinner.className='ui-spinner';spinner.setAttribute('role','status');spinner.setAttribute('aria-label','Loading status');list.appendChild(spinner);}continue;}
+  for(const row of rows){
+   const item=document.createElement('div');item.className='qos-status-row';item.dataset.qosInterface=row.interface;item.setAttribute('role','listitem');
+   const identity=document.createElement('div'),name=document.createElement('strong'),detail=document.createElement('small'),badge=document.createElement('span');
+   const label=queueList?(row.name||sqmNames[row.interface]||row.network):(row.network||row.interface);
+   name.textContent=label&&label!==row.interface?label+' ('+row.interface+')':row.interface;
+   const rates=queueList&&row.download!=null&&row.upload!=null,wan=queueList&&sqmIsWan(row.interface);
+   detail.textContent=rates?'DL '+sqmSummaryRate(wan?row.download:row.upload)+' · UL '+sqmSummaryRate(wan?row.upload:row.download):[row.placement==='wan'?'via '+row.queue_interface:'',row.clients?row.clients+' devices':''].filter(Boolean).join(' · ');
+   if(row.daily_active)detail.textContent+=(detail.textContent?' · ':'')+'Daily';
+   identity.append(name);if(detail.textContent)identity.append(detail);badge.className='qos-status-state';const state=data.stale?'unknown':row.state;
+   renderQosBadge(badge,state,!!data.error,queueList);item.append(identity,badge);
+   if(row.message&&['error','pending','unknown'].includes(state)){
+    const reason=document.createElement('details'),summary=document.createElement('summary'),text=document.createElement('pre');reason.className='qos-status-message';summary.textContent='Details';text.textContent=row.message;reason.open=opened.has(row.interface);reason.append(summary,text);item.appendChild(reason);
+   }
+   fragment.appendChild(item);
+   if(focused===row.interface)focusTarget=item.querySelector('summary');
+  }
+  list.replaceChildren(fragment);focusTarget?.focus({preventScroll:true});
+ }
+ renderSqmSingleStatus(data);
+}
+async function loadQosStatus(){if(qosStatusPromise)return qosStatusPromise;qosStatusPromise=(async()=>{try{const data=await api('/api/qos/status');if(!data.ok)throw Error(data.output||'Runtime check failed');qosStatusData=data;qosStatusError='';renderQosStatus(data);}catch(error){qosStatusError='Status unavailable: '+error.message;qosStatusData={...(qosStatusData||{}),ok:false,stale:true,error:qosStatusError,networks:(qosStatusData?.networks||[]).map(row=>({...row,message:qosStatusError}))};renderQosStatus(qosStatusData);}})().finally(()=>{qosStatusPromise=null;renderSqmLoading();});return qosStatusPromise;}
 function logSeverity(line){
 const level=(line.match(/(?:^|\s)[a-z][\w-]*\.(emerg|alert|crit|err|error|warn|warning|notice|info|debug)(?=\s|$)/i)||line.match(/\[(emerg|alert|crit|err|error|warn|warning|notice|info|debug)\]/i))?.[1]?.toLowerCase();
 return ['emerg','alert','crit','err','error'].includes(level)?'error':['warn','warning'].includes(level)?'warning':level==='notice'?'notice':level==='debug'?'debug':'info';
@@ -276,7 +306,8 @@ let overviewRangeSecs=savedChartRange('opennds-overview-range');
 function setOverviewRange(value){overviewRangeSecs=chartRange(value);saveChartRange('opennds-overview-range',overviewRangeSecs);$('overview_chart_range').value=String(overviewRangeSecs);$('overview_chart_label').textContent=periodLabel(overviewRangeSecs);$('trafficChart').setAttribute('aria-label','Download and upload traffic waves for the last '+periodLabel(overviewRangeSecs));drawTraffic(overviewData?.history||[]);}
 function drawTraffic(history=[]){drawRateChart($('trafficChart'),history,overviewRangeSecs,260,'No samples',overviewRangeSecs>3600?180:10);}
 function appendOverviewSample(j){if(!overviewHistoryLoaded||!overviewData?.history)return;const at=+j.updated_at;if(!at)return;
-const history=overviewData.history,last=history[history.length-1],sample={at,download:+j.live?.download||0,upload:+j.live?.upload||0};
+const history=overviewData.history,last=history[history.length-1],sample={at,download:j.live?.download??null,upload:j.live?.upload??null};
+if(j.stale&&last?.at===at){drawTraffic(history);return;}
 if(last?.at===at)history[history.length-1]=sample;else if(!last||at>last.at){history.push(sample);while(history.length&&(+history[0].at||0)<at-86400)history.shift();}
 drawTraffic(history);}
 function mergeHistory(previous,j){
@@ -303,7 +334,7 @@ overviewData=Object.assign(overviewData||{},j);$('ov_clients').textContent=j.con
 const today=(+j.today?.download||0)+(+j.today?.upload||0),month=(+j.month?.download||0)+(+j.month?.upload||0);
 $('ov_today').textContent=fmtBytes(today);$('ov_month').textContent=fmtBytes(month);
 $('overviewupdated').textContent=j.updated_at?clock(j.updated_at):'Waiting…';
-$('overviewnote').textContent=j.tracking_since?j.interface+' · Since '+new Date(j.tracking_since*1000).toLocaleDateString():'';
+$('overviewnote').textContent='Client IPv4 WAN · Host/router excluded'+(j.tracking_since?' · Since '+new Date(j.tracking_since*1000).toLocaleDateString():'')+(j.stale?' · Waiting for sample':'');
 appendOverviewSample(j);if(!overviewHistoryLoaded||Date.now()-overviewHistoryAt>=HISTORY_REFRESH_MS)loadOverviewHistory().catch(()=>{});})().finally(()=>{overviewPromise=null;});return overviewPromise;}
 let clientRangeSecs=savedChartRange('opennds-client-range'),clientHistory=[],clientHistoryResolution='minutes';
 function setClientRange(value){clientRangeSecs=chartRange(value);saveChartRange('opennds-client-range',clientRangeSecs);$('client_chart_range').value=String(clientRangeSecs);$('client_chart_label').textContent=periodLabel(clientRangeSecs);$('clientTrafficChart').setAttribute('aria-label','Client download and upload traffic waves for the last '+periodLabel(clientRangeSecs));drawClientTraffic(clientHistory);}
@@ -326,11 +357,16 @@ clientHistoryResolution=j.recent_resolution||'minutes';drawClientTraffic(clientH
 finally{if(generation===clientDetailGeneration){clientHistoryPromise=null;clientHistoryController=null;}}})();
 clientHistoryPromise=promise;return promise;
 }
-function showClientDetail(client){clientHistoryController?.abort();clientDetailGeneration++;clientHistoryPromise=null;clientHistoryController=null;clientHistoryCursor=null;clientHistoryGeneration='';const detail=$('client_detail');$('client_detail_title').textContent=client.hostname||client.mac||'Client';clientDetailMac=(client.mac||'').toLowerCase();clientHistory=[];clientHistoryResolution='minutes';if(!detail.open)detail.showModal();drawClientTraffic(clientHistory);loadClientHistory();clearInterval(clientHistoryTimer);clientHistoryTimer=setInterval(loadClientHistory,1000);}
+function showClientDetail(client){clientHistoryController?.abort();clientDetailGeneration++;clientHistoryPromise=null;clientHistoryController=null;clientHistoryCursor=null;clientHistoryGeneration='';const detail=$('client_detail');$('client_detail_title').textContent=client.hostname||client.mac||'Client';$('client_detail_edit').onclick=()=>editClientName(client);clientDetailMac=(client.mac||'').toLowerCase();clientHistory=[];clientHistoryResolution='minutes';if(!detail.open)detail.showModal();drawClientTraffic(clientHistory);loadClientHistory();clearInterval(clientHistoryTimer);clientHistoryTimer=setInterval(loadClientHistory,1000);}
 $('client_detail').addEventListener('click',event=>{if(event.target===$('client_detail'))$('client_detail').close();});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&$('client_detail').open){loadClientHistory();}syncClientPanbar();});
 $('client_detail').addEventListener('close',()=>{clientHistoryController?.abort();clientDetailGeneration++;clientHistoryPromise=null;clientHistoryController=null;const focusKey=clientDetailMac+':detail';clientDetailMac='';if(current==='clients')[...$('ctable').querySelectorAll('button')].find(button=>button.dataset.clientFocus===focusKey)?.focus({preventScroll:true});clearInterval(clientHistoryTimer);clientHistoryTimer=null;});
-async function editClientName(client){const name=prompt('Name · '+(client.mac||'client')+' (blank = DHCP):',client.custom_name||'');if(name===null)return;busy=true;try{const j=await api('/api/clients/name',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mac:client.mac,name})});if(!j.ok){alert(j.output||'Name save failed');return;}await loadClients();}catch(e){alert('Name save failed: '+e.message);}finally{busy=false;}}
+async function editClientName(client){if(busy)return;const name=prompt('Name · '+(client.mac||'client')+' (blank = DHCP):',client.custom_name||'');if(name===null)return;busy=true;
+const buttons=[$('client_detail_edit'),$('client_actions_edit')];buttons.forEach(button=>button.disabled=true);
+try{const j=await api('/api/clients/name',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mac:client.mac,name})});if(!j.ok){alert(j.output||'Name save failed');return;}
+client.custom_name=j.name;await loadClients();const updated=Object.values(clientsResponse?.data?.clients||{}).find(item=>item.mac?.toLowerCase()===client.mac.toLowerCase());if(updated)Object.assign(client,updated);
+const title=client.custom_name||client.hostname||client.mac;if(clientDetailMac===client.mac.toLowerCase())$('client_detail_title').textContent=title;if(clientActionsMac?.toLowerCase()===client.mac.toLowerCase())$('client_actions_title').textContent=title;
+}catch(e){alert('Name save failed: '+e.message);}finally{busy=false;buttons.forEach(button=>button.disabled=false);}}
 let clientsPromise=null;
 function syncClientPanbar(source){const wrap=$('client_table_wrap'),bar=$('client_panbar');if(!wrap||!bar)return;const visible=current==='clients'&&document.visibilityState!=='hidden',overflow=wrap.scrollWidth>wrap.clientWidth+1;
 if(visible){const actions=wrap.querySelector('th.client-actions'),upload=wrap.querySelector('th.client-rate-up');if(actions&&upload){wrap.style.setProperty('--client-actions-width',actions.getBoundingClientRect().width+'px');wrap.style.setProperty('--client-rate-up-width',upload.getBoundingClientRect().width+'px');}}
@@ -345,7 +381,7 @@ function clientActionDots(){const svg=document.createElementNS('http://www.w3.or
 function clientActions(client){const actions=[client.blocked?'unblock':'block',client.trusted?'untrust':'trust'];if(!client.blocked&&!client.trusted)actions.push(client.punished?'unpunish':'punish');if(client.mac)actions.push('limits');if(!client.online)actions.push('delete');return actions;}
 function runClientAction(action,client){if(action==='limits')return editLimits(client.mac.toLowerCase());if(action==='delete'&&!confirm('Delete history · '+client.mac+'?'))return;return act(action,client.mac);}
 let clientActionsMac='';
-function showClientActions(client){const dialog=$('client_actions_dialog');clientActionsMac=client.mac;$('client_actions_title').textContent=client.hostname||client.mac;$('client_actions_identity').textContent=[client.ip,client.mac].filter(Boolean).join(' · ');const buttons=$('client_actions_buttons');buttons.textContent='';for(const action of clientActions(client)){const button=clientActionButton(action);button.onclick=()=>{dialog.close();runClientAction(action,client);};buttons.appendChild(button);}if(!dialog.open)dialog.showModal();}
+function showClientActions(client){const dialog=$('client_actions_dialog');clientActionsMac=client.mac;$('client_actions_title').textContent=client.hostname||client.mac;$('client_actions_edit').onclick=()=>editClientName(client);$('client_actions_identity').textContent=[client.ip,client.mac].filter(Boolean).join(' · ');const buttons=$('client_actions_buttons');buttons.textContent='';for(const action of clientActions(client)){const button=clientActionButton(action);button.onclick=()=>{dialog.close();runClientAction(action,client);};buttons.appendChild(button);}if(!dialog.open)dialog.showModal();}
 $('client_actions_dialog').addEventListener('click',event=>{if(event.target===$('client_actions_dialog'))$('client_actions_dialog').close();});
 $('client_actions_dialog').addEventListener('close',()=>{const trigger=[...document.querySelectorAll('.client-actions-more')].find(button=>button.dataset.mac===clientActionsMac);if(trigger?.getClientRects().length)trigger.focus({preventScroll:true});clientActionsMac='';});
 function clientNetworkGroups(networks,clients){
@@ -394,7 +430,7 @@ const added=x.added_ping_ms?'+'+x.added_ping_ms+' ms':'—',throttle=x.throttle?
 [x.online?'\u25cf':'\u25cb',x.hostname,x.mac,x.ip,x.blocked?'BLOCK':x.trusted?'TRUST':x.punished?'PUNISH':throttle||({Authenticated:'AUTH',Preauthenticated:'PREAUTH',Offline:'OFF'}[x.state]||x.state),x.last_active?ageLabel(Math.max(0,Date.now()/1000-x.last_active)):'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v??'';tr.appendChild(td);});
 const stateLabel=document.createElement('span');stateLabel.className='client-state';stateLabel.dataset.state=x.blocked?'blocked':x.trusted?'trusted':x.punished||throttle?'limited':x.online?'online':'offline';stateLabel.textContent=tr.children[4].textContent;tr.children[4].replaceChildren(stateLabel);
 tr.children[0].title=x.online?'Online':'Offline';tr.children[0].setAttribute('aria-label',tr.children[0].title);if(!x.online)tr.children[3].title='Last known address and network';tr.children[4].title=x.state||'';tr.children[5].title=ts(x.last_active);
-const hostnameCell=tr.children[1],hostnameButton=document.createElement('button'),nameEdit=document.createElement('button');hostnameCell.textContent='';hostnameCell.className='client-name-cell';hostnameButton.className='client-name-button btn btn-link';hostnameButton.textContent=x.hostname||x.mac;hostnameButton.title=x.hostname||x.mac;hostnameButton.dataset.clientFocus=x.mac.toLowerCase()+':detail';hostnameButton.onclick=()=>showClientDetail(x);nameEdit.className='client-name-edit btn btn-ghost btn-xs';nameEdit.dataset.clientFocus=x.mac.toLowerCase()+':name';nameEdit.type='button';nameEdit.textContent='edit';nameEdit.title='Edit display name';nameEdit.onclick=event=>{event.preventDefault();event.stopPropagation();editClientName(x);};hostnameCell.append(hostnameButton,nameEdit);
+const hostnameCell=tr.children[1],hostnameButton=document.createElement('button');hostnameCell.textContent='';hostnameCell.className='client-name-cell';hostnameButton.className='client-name-button btn btn-link';hostnameButton.textContent=x.hostname||x.mac;hostnameButton.title=x.hostname||x.mac;hostnameButton.dataset.clientFocus=x.mac.toLowerCase()+':detail';hostnameButton.onclick=()=>showClientDetail(x);hostnameCell.append(hostnameButton);
 if(x.limits_pending||x.tc_pending_message){const pending=document.createElement('small');pending.style.display='block';pending.textContent=x.tc_pending_message?'TC pending':x.limits_refreshing?'Re-auth':'Limits pending';pending.title=[x.limits_pending_message,x.tc_pending_message].filter(Boolean).join(' ');tr.children[4].appendChild(pending);}
 if(x.tc_note){const note=document.createElement('small');note.style.display='block';note.textContent='SQM unavailable';note.title=x.tc_note;tr.children[4].appendChild(note);}
 tr.append(wanUsageCell(x.wan_today_download_bytes,x.wan_month_download_bytes),wanUsageCell(x.wan_today_upload_bytes,x.wan_month_upload_bytes));
@@ -444,14 +480,18 @@ async function clearLimits(){if(!limitsLoaded)return;const mac=val('lim_mac').tr
 const j=await api('/api/limits',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mac,clear:true,limits:{}})});
 showResult($('limout'),j,'Cleared'+(j.sessions_refreshing?' · Re-auth: '+j.sessions_refreshing:''));if(j.ok){limSet('lv_',null);await loadLimits();}});}
 async function editLimits(mac){if(!await show('limits')||current!=='limits')return;$('lim_mac').value=mac;limSet('lv_',limData.devices[mac]);$('lim_mac').focus();}
-function renderPunishmentStatus(j){const badge=$('pun_badge');const count=Number(j.punished)||0;badge.textContent=count+' punished';badge.dataset.state=j.tc_error?'attention':count?'ready':'idle';$('pun_tc_status').textContent=j.tc_error||('Traffic control '+(j.tc_active?'active':'idle'));}
-let punishmentLoaded=false;
-async function loadPunishment(preserveDraft=false){try{const j=await api('/api/punishment');if(!j.ok){$('punout').textContent=j.output||'Policy load failed';return;}
-if(!preserveDraft||!punishmentLoaded){$('pun_delay').value=j.delay_ms;$('pun_loss').value=j.loss_pct;$('pun_down').value=j.download;$('pun_up').value=j.upload;}punishmentLoaded=true;renderPunishmentStatus(j);$('punout').textContent=j.tc_error||'';
-}catch(e){$('punout').textContent='Policy load failed: '+e.message;}}
-async function savePunishment(){const button=$('pun_save');button.disabled=true;busy=true;try{const j=await api('/api/punishment',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({delay_ms:val('pun_delay'),loss_pct:val('pun_loss'),download:val('pun_down'),upload:val('pun_up')})});
-showResult($('punout'),j,'Saved');if(j.ok)renderPunishmentStatus(j);
-}catch(e){$('punout').textContent='Policy save failed: '+e.message;}finally{button.disabled=false;busy=false;}}
+function renderPunishmentStatus(j){const badge=$('pun_badge');const count=Number(j.punished)||0;badge.textContent=count+' punished';badge.dataset.state=j.tc_error?'attention':count?'ready':'idle';$('pun_tc_status').textContent=j.tc_error||('Traffic control '+(j.tc_active?'active':'idle'));punishmentAutoSaved=!!j.auto_punish_new;renderAutoPunish();}
+let punishmentLoaded=false,punishmentPromise=null,punishmentAutoSaved=false;
+function renderAutoPunish(){$('pun_auto').checked=punishmentAutoSaved;$('pun_auto_state').textContent=punishmentAutoSaved?'On':'Off';}
+function punishmentControls(){const pending=busy||!!punishmentPromise||!punishmentLoaded;$('pun_auto').disabled=pending;$('pun_save').disabled=pending;}
+async function loadPunishment(preserveDraft=false){if(punishmentPromise)return punishmentPromise;if(busy)return false;punishmentPromise=(async()=>{try{const j=await api('/api/punishment');if(!j.ok){$('punout').textContent=j.output||'Policy load failed';return false;}
+if(!preserveDraft||!punishmentLoaded){$('pun_delay').value=j.delay_ms;$('pun_loss').value=j.loss_pct;$('pun_down').value=j.download;$('pun_up').value=j.upload;}punishmentLoaded=true;renderPunishmentStatus(j);$('punout').textContent=j.tc_error||'';return true;
+}catch(e){$('punout').textContent='Policy load failed: '+e.message;return false;}})().finally(()=>{punishmentPromise=null;punishmentControls();});punishmentControls();return punishmentPromise;}
+async function toggleAutoPunish(enabled){renderAutoPunish();if(!punishmentLoaded||punishmentPromise||busy)return;
+return settingsAction('punishment','pun_auto_out',async()=>{punishmentControls();const j=await api('/api/punishment',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto_punish_new:enabled})});if(j.ok)renderPunishmentStatus(j);showResult($('pun_auto_out'),j,enabled?'On':'Off');}).finally(punishmentControls);}
+async function savePunishment(){if(!punishmentLoaded||punishmentPromise||busy)return;
+return settingsAction('punishment','punout',async()=>{punishmentControls();const j=await api('/api/punishment',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({delay_ms:val('pun_delay'),loss_pct:val('pun_loss'),download:val('pun_down'),upload:val('pun_up')})});
+showResult($('punout'),j,'Saved');if(j.ok)renderPunishmentStatus(j);}).finally(punishmentControls);}
 const MODE_NAMES={portal:'Portal',auto_auth:'Auto-auth',auto_trust:'Auto-trust'};
 let networkSettingsLoaded=false,networkSettingsBusy=false,networkLoadPromise=null,networkDraft={},networkRows=[],networkDirty=new Set();
 let hiddenNetworks=new Set(),networkEditing=false;
@@ -542,57 +582,138 @@ async function saveMode(){
  finally{networkSettingsBusy=false;busy=false;networkControls();}
 }
 let sqmSummaryBase=null,sqmSummaryRule=null,sqmSummaryBaseError='',sqmSummaryRuleError='';
+let sqmViewPromise=null,sqmViewWaiting=true,sqmViewHasData=false,sqmCachePending=false;
+function renderSqmLoading(){
+ const error=sqmSummaryBaseError||sqmSummaryRuleError||qosStatusError;
+ if(!sqmViewWaiting&&sqmLoaded&&sqmRuleLoaded&&qosStatusData?.ok&&!qosStatusData.stale&&!error)sqmViewHasData=true;
+ const show=sqmViewHasData&&!sqmViewWaiting&&!sqmCachePending;
+ $('sqm_content').hidden=!show;$('sqm_loading').hidden=show||!!error;$('sqm_load_error').hidden=!error;$('sqm_load_error').textContent=error;
+ $('sqm').setAttribute('aria-busy',String(!show&&!error));
+}
+let sqmNames={},sqmNameDrafts={},sqmWanInterface='';
+let sqmModeSaved={mode:'multiple',interface:''},sqmModeDraft=null;
+function renderSqmMode(){
+ $('sqm_status_card').hidden=sqmModeSaved.mode==='single'||(!sqmSummaryBase&&!sqmSummaryBaseError);
+ const draft=sqmModeDraft||sqmModeSaved,select=$('sqm_mode_interface'),previous=select.value;
+ $('sqm_mode').value=draft.mode;select.replaceChildren();
+ const names=Object.keys(sqmQueues).sort();
+ if(sqmModeSaved.mode==='single'&&!names.includes(sqmModeSaved.interface))names.push(sqmModeSaved.interface);
+ for(const iface of names){const option=document.createElement('option');option.value=iface;option.textContent=sqmInterfaceLabel(iface)+(sqmQueues[iface]?'':' · Unavailable');select.appendChild(option);}
+ select.value=names.includes(draft.interface)?draft.interface:names.includes(previous)?previous:names.find(iface=>sqmBaselineOn(iface))||names[0]||'';
+ $('sqm_mode_interface_field').hidden=draft.mode!=='single';
+ $('sqm_mode_note').textContent=draft.mode==='single'?'Only the selected interface runs SQM. Applying turns other queues and their Daily rules off.':'Manage queues independently. Existing queues stay as they are.';
+ $('sqm_add').hidden=sqmModeSaved.mode==='single';
+}
+function draftSqmMode(){sqmModeDraft={mode:val('sqm_mode'),interface:val('sqm_mode_interface')};renderSqmMode();sqmInterfaceControls();}
+async function saveSqmMode(){
+ if(!sqmLoaded||!sqmReady())return;
+ const mode=val('sqm_mode'),iface=mode==='single'?val('sqm_mode_interface'):'';
+ if(mode==='single'&&!sqmQueues[iface])return;
+ await settingsAction('sqm','sqm_mode_out',async()=>{
+  rememberSqmDraft();sqmInterfaceControls();$('sqm_mode_out').textContent='Applying…';
+  const j=await api('/api/sqm/mode',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,interface:iface})});
+  if(j.ok){sqmModeDraft=null;sqmModeSaved=j.sqm_mode;await Promise.all([loadSqmBase(true),loadSqmRule(true)]);
+   for(const name of Object.keys(sqmDrafts))if(sqmBaselines[name])sqmDrafts[name].enabled=sqmBaselines[name].enabled;
+   for(const name of Object.keys(sqmRuleDrafts))if(sqmRules[name])sqmRuleDrafts[name].enabled=!!sqmRules[name].enabled;
+   renderSqmInterface(sqmSelected);renderSqmRuleInterface(sqmSelected);renderSqmSummary();await loadQosStatus();
+  }
+  showResult($('sqm_mode_out'),j,j.output||'Mode applied');
+ });sqmInterfaceControls();
+}
+function sqmIsWan(iface){return iface===sqmWanInterface||sqmRules[iface]?.usage_scope==='all_wan'||(sqmRoles[iface]||'').includes('WAN');}
+function sqmInterfaceLabel(iface){const name=sqmNames[iface]||sqmRoles[iface]?.split(' · ')[0];return name?name+' ('+iface+')':iface;}
+function sqmBaselineOn(iface){return sqmQueues[iface]?.enabled==='1';}
+async function saveSqmName(){
+ if(!sqmReady()||!sqmLoaded||!sqmSelected)return;
+ const iface=sqmSelected,name=val('sqm_name');
+ await settingsAction('sqm','sqm_name_out',async()=>{sqmInterfaceControls();const j=await api('/api/sqm/name',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({interface:iface,name})});
+ if(j.ok){if(j.name)sqmNames[iface]=j.name;else delete sqmNames[iface];delete sqmNameDrafts[iface];$('sqm_name').value=j.name;$('sqm_interface_title').textContent=sqmInterfaceLabel(iface);if(qosStatusData?.queues){for(const row of qosStatusData.queues)if(row.interface===iface)row.name=j.name||sqmRoles[iface]?.split(' · ')[0]||iface;renderQosStatus(qosStatusData);}renderSqmSummary();}
+ showResult($('sqm_name_out'),j,'Name saved');});sqmInterfaceControls();
+}
 function sqmSummaryRate(value){const number=Number(value);if(value==null||!Number.isFinite(number))return '—';if(number===0)return 'Unlimited';const unit=$('sqm_unit').value||'KB/s',config=sqmUnitConfig(unit);return sqmFormat(number/config.kbPerUnit,config.decimals)+' '+unit;}
+function sqmSummarySwitch(iface,kind,enabled){
+ const label=document.createElement('label');label.className='sqm-summary-switch';
+ const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=enabled;input.dataset.sqmToggle=kind;input.dataset.interface=iface;input.setAttribute('aria-label',(kind==='queue'?'SQM queue ':'Daily WAN ')+iface);
+ const name=document.createElement('span');name.textContent=kind==='queue'?'Queue':'Daily WAN';const state=document.createElement('span');state.textContent=enabled?'On':'Off';state.setAttribute('aria-hidden','true');
+ input.onchange=()=>toggleSqmSaved(iface,kind,input.checked,input);label.append(name,input,state);return label;
+}
+async function toggleSqmSaved(iface,kind,enabled,control){
+ const saved=kind==='queue'?sqmBaselines[iface]:sqmRules[iface],wasEnabled=kind==='queue'?saved?.enabled==='1':!!saved?.enabled;
+ if(control)control.checked=wasEnabled;
+ if(!sqmReady()||!saved||control?.disabled||(kind==='daily'&&!sqmBaselineOn(iface)))return;
+ const body=kind==='queue'?{interface:iface,enabled,download:saved.download,upload:saved.upload,qdisc:saved.qdisc,script:saved.script}:{interface:iface,enabled};
+ await settingsAction('sqm','sqm_summary_out',async()=>{
+  rememberSqmDraft();sqmInterfaceControls();$('sqm_summary_out').textContent='Applying…';
+  const j=await api(kind==='queue'?'/api/sqm':'/api/sqm/conditional',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  await Promise.all([loadSqmBase(true),loadSqmRule(true)]);
+  if(j.ok){
+   if(kind==='queue'&&sqmDrafts[iface])sqmDrafts[iface].enabled=sqmBaselines[iface]?.enabled;
+   if(sqmRuleDrafts[iface])sqmRuleDrafts[iface].enabled=!!sqmRules[iface]?.enabled;
+   renderSqmInterface(sqmSelected);renderSqmRuleInterface(sqmSelected);
+  }
+  showResult($('sqm_summary_out'),j,iface+' · '+(kind==='queue'?'Queue':'Daily WAN')+' '+(enabled?'on':'off'));
+ });
+ sqmInterfaceControls();
+ if(!document.activeElement||document.activeElement===document.body||document.activeElement===control){const replacement=[...document.querySelectorAll('[data-sqm-toggle]')].find(input=>input.dataset.interface===iface&&input.dataset.sqmToggle===kind);replacement?.focus({preventScroll:true});}
+}
 function renderSqmSummary(){
+ renderSqmMode();
  const list=$('sqm_summary_queues');list.replaceChildren();
- const names=sqmListedInterfaces().sort((a,b)=>Number(b===sqmSummaryBase?.primary_interface)-Number(a===sqmSummaryBase?.primary_interface)||a.localeCompare(b));
+ const names=(sqmModeSaved.mode==='single'?[sqmModeSaved.interface]:sqmListedInterfaces()).sort((a,b)=>Number(b===sqmSummaryBase?.primary_interface)-Number(a===sqmSummaryBase?.primary_interface)||a.localeCompare(b));
  if(!names.length)list.textContent=sqmSummaryBase||sqmSummaryRule?'No configured interfaces. Add an interface to get started.':'Loading interfaces…';
  for(const iface of names){
- const queue=sqmQueues[iface],baseline=sqmBaselines[iface],rule=sqmRules[iface],dailyActive=rule?.active&&!rule.error,effective=dailyActive?rule:queue;
+ const queue=sqmQueues[iface],baseline=sqmBaselines[iface],rule=sqmRules[iface],baselineOn=sqmBaselineOn(iface),dailyActive=baselineOn&&rule?.active&&!rule.error,effective=dailyActive?rule:queue;
  const group=document.createElement('div');group.className='sqm-summary-interface';group.dataset.interface=iface;group.setAttribute('role','listitem');
  const row=document.createElement('div');row.className='sqm-summary-queue';row.dataset.interface=iface;
- const identity=document.createElement('div'),name=document.createElement('strong'),state=document.createElement('small'),script=document.createElement('small');name.textContent=iface;
- state.textContent=queue?(queue.enabled==='1'?'Enabled':'Disabled')+' · '+(queue.qdisc||'—')+' · '+(dailyActive?'Daily active':queue.enabled==='1'?'Baseline active':'Queue off'):sqmAdded.has(iface)?'Draft · Not applied':(sqmSummaryBase?'No SQM queue':'Queue unavailable');script.textContent=queue?.script||'';identity.append(name,state,script);row.appendChild(identity);
- const wan=(sqmRoles[iface]||'').includes('WAN');for(const [label,value] of [['DL',wan?effective?.download:effective?.upload],['UL',wan?effective?.upload:effective?.download]]){const rate=document.createElement('div'),title=document.createElement('small'),amount=document.createElement('strong');title.textContent=label;amount.textContent=sqmSummaryRate(value);rate.append(title,amount);row.appendChild(rate);}group.appendChild(row);
- if(baseline){const block=document.createElement('div');block.className='sqm-summary-baseline sqm-summary-policy';block.dataset.interface=iface;const heading=document.createElement('strong'),rates=document.createElement('span');heading.textContent='Baseline';rates.textContent='DL '+sqmSummaryRate(wan?baseline.download:baseline.upload)+' · UL '+sqmSummaryRate(wan?baseline.upload:baseline.download);block.append(heading,rates);group.appendChild(block);}
- if(rule){const block=document.createElement('div');block.className='sqm-summary-daily-rule sqm-summary-policy';block.dataset.interface=iface;
- const status=rule.error?'Error':rule.forced_today?'Forced today':rule.active?'Active':rule.enabled?'Waiting':'Off';
- const heading=document.createElement('strong');heading.textContent='Daily · '+status;
- const usage=document.createElement('span');usage.textContent=fmtGb(rule.today_bytes).toFixed(2)+' / '+rule.threshold_gb+' GB · '+(rule.today_date||'')+' · Resets at midnight';
- const rates=document.createElement('span');rates.textContent='After threshold: DL '+sqmSummaryRate(rule.upload)+' · UL '+sqmSummaryRate(rule.download);block.append(heading,usage,rates);
+ const identity=document.createElement('div'),name=document.createElement('strong'),state=document.createElement('small'),script=document.createElement('small');name.textContent=sqmInterfaceLabel(iface);
+ state.textContent=queue?(queue.enabled==='1'?'Enabled':'Disabled')+' · '+(queue.qdisc||'—')+' · '+(dailyActive?'Daily active':queue.enabled==='1'?'Baseline active':'Queue off'):sqmAdded.has(iface)?'Draft · Not applied':(sqmSummaryBase?'No SQM queue':'Queue unavailable');script.textContent=queue?.script||'';
+ if(sqmModeSaved.mode==='single'){
+  identity.dataset.sqmSingleInterface=iface;const title=document.createElement('div'),badge=document.createElement('span'),diagnostics=document.createElement('div');title.className='sqm-single-title';badge.className='qos-status-state';badge.setAttribute('role','status');badge.setAttribute('aria-label','SQM runtime status for '+iface);diagnostics.className='sqm-single-diagnostics';title.append(name,badge);identity.append(title,diagnostics,state);
+  if(queue)state.textContent=(queue.qdisc||'—')+' · '+(dailyActive?'Daily':'Baseline');
+ }else identity.append(name,state,script);row.appendChild(identity);
+ const wan=sqmIsWan(iface);for(const [label,value] of [['DL',wan?effective?.download:effective?.upload],['UL',wan?effective?.upload:effective?.download]]){const rate=document.createElement('div'),title=document.createElement('small'),amount=document.createElement('strong');title.textContent=label;amount.textContent=sqmSummaryRate(value);rate.append(title,amount);row.appendChild(rate);}group.appendChild(row);
+ if(baseline){const block=document.createElement('div');block.className='sqm-summary-baseline sqm-summary-policy';block.dataset.interface=iface;const header=document.createElement('div');header.className='sqm-summary-policy-heading';const heading=document.createElement('strong'),rates=document.createElement('span');heading.textContent='Baseline';header.append(heading,sqmSummarySwitch(iface,'queue',baseline.enabled==='1'));rates.textContent='DL '+sqmSummaryRate(wan?baseline.download:baseline.upload)+' · UL '+sqmSummaryRate(wan?baseline.upload:baseline.download);block.append(header,rates);group.appendChild(block);}
+ if(rule){const block=document.createElement('div');block.className='sqm-summary-daily-rule sqm-summary-policy'+(!baselineOn?' sqm-daily-disabled':'');block.dataset.interface=iface;block.setAttribute('aria-disabled',String(!baselineOn));
+ const status=!sqmLoaded?'Baseline unavailable':!baselineOn?'Off · Baseline off':rule.error?'Error':rule.forced_today?'Forced today':rule.active?'Active':rule.enabled?'Waiting':'Off';
+ const header=document.createElement('div');header.className='sqm-summary-policy-heading';const heading=document.createElement('strong');heading.textContent='Daily · '+status;header.append(heading,sqmSummarySwitch(iface,'daily',(!sqmLoaded||baselineOn)&&!!rule.enabled));
+ const usage=document.createElement('span');usage.textContent=fmtGb(rule.today_bytes).toFixed(2)+' / '+rule.threshold_gb+' GB · Resets at midnight';
+ const rates=document.createElement('span');rates.textContent='After threshold: DL '+sqmSummaryRate(wan?rule.download:rule.upload)+' · UL '+sqmSummaryRate(wan?rule.upload:rule.download);block.append(header,usage,rates);if(wan){const scope=document.createElement('small');scope.textContent='All WAN traffic';block.appendChild(scope);}
  if(rule.error){const error=document.createElement('span');error.className='sqm-summary-error';error.textContent=rule.error;block.appendChild(error);}group.appendChild(block);
  }else if(!sqmSummaryRule){const loading=document.createElement('small');loading.textContent=sqmSummaryRuleError?'Daily rule unavailable':'Loading daily rule…';group.appendChild(loading);}
  const actions=document.createElement('div');actions.className='sqm-interface-actions';const edit=document.createElement('button');edit.type='button';edit.className='btn btn-secondary btn-sm';edit.textContent='Edit';edit.dataset.sqmEdit=iface;edit.setAttribute('aria-label','Edit SQM '+iface);edit.onclick=()=>openSqmEditor(iface);actions.appendChild(edit);group.appendChild(actions);list.appendChild(group);
  }
  $('sqm_summary_base_error').textContent=sqmSummaryBaseError?(sqmSummaryBase?'Last loaded queues · ':'')+sqmSummaryBaseError:'';
  $('sqm_summary_rule_error').textContent=sqmSummaryRuleError;
+ renderSqmSingleStatus(qosStatusData);
+ renderSqmLoading();
  sqmInterfaceControls();
 }
 let sqmPromise=null,sqmLoaded=false,sqmSelected='',sqmQueues={},sqmBaselines={},sqmDrafts={},sqmRoles={},sqmInterfaces=[];
 const sqmAdded=new Set();
 function sqmListedInterfaces(){return [...new Set([...Object.keys(sqmQueues),...Object.values(sqmRules).filter(rule=>rule.enabled||rule.active||rule.error).map(rule=>rule.interface),...sqmAdded])];}
 function sqmAvailableInterfaces(){const listed=new Set(sqmListedInterfaces());return sqmInterfaces.filter(name=>!listed.has(name));}
-function sqmReady(){return !busy&&!sqmPromise&&!sqmRulePromise&&(sqmLoaded||sqmRuleLoaded);}
+function sqmReady(){return !sqmCachePending&&!busy&&!sqmPromise&&!sqmRulePromise&&(sqmLoaded||sqmRuleLoaded);}
 function rememberSqmDraft(){
- if(sqmSelected&&sqmLoaded)sqmDrafts[sqmSelected]=sqmDraft();
+ if(sqmSelected&&sqmLoaded){sqmDrafts[sqmSelected]=sqmDraft();sqmNameDrafts[sqmSelected]=val('sqm_name');}
  if(sqmRuleSelected&&sqmRuleLoaded&&sqmRules[sqmRuleSelected])sqmRuleDrafts[sqmRuleSelected]=sqmRuleDraft();
 }
 function openSqmEditor(iface){
  if(!sqmReady())return;
- $('sqm_summary').hidden=true;$('sqm_interface').hidden=false;selectSqmInterface(iface);
- $('sqm_interface').scrollIntoView({block:'start'});$('sqm_interface_title').focus({preventScroll:true});
+ const dialog=$('sqm_interface');dialog.hidden=false;selectSqmInterface(iface);
+ if(!dialog.open)dialog.showModal();dialog.querySelector('.settings-body').scrollTop=0;$('sqm_interface_title').focus({preventScroll:true});
 }
 function closeSqmEditor(){
  if(!sqmReady())return;
- rememberSqmDraft();$('sqm_interface').hidden=true;$('sqm_summary').hidden=false;renderSqmSummary();
+ rememberSqmDraft();$('sqm_interface').close();$('sqm_interface').hidden=true;renderSqmSummary();
  $('sqm_direction_note').textContent='Bandwidth and daily limits by interface.';
  ([...document.querySelectorAll('[data-sqm-edit]')].find(button=>button.dataset.sqmEdit===sqmSelected)||$('sqm_add')).focus({preventScroll:true});
 }
+$('sqm_interface').addEventListener('cancel',event=>{event.preventDefault();closeSqmEditor();});
 function openSqmAdd(){
- if(!sqmReady()||!sqmLoaded)return;
+ if(!sqmReady()||!sqmLoaded||sqmModeSaved.mode==='single')return;
  const select=$('sqm_add_interface');select.replaceChildren();
  const prompt=document.createElement('option');prompt.value='';prompt.textContent='Choose interface';prompt.disabled=true;prompt.selected=true;select.appendChild(prompt);
- for(const name of sqmAvailableInterfaces()){const option=document.createElement('option');option.value=name;option.textContent=name+(sqmRoles[name]?' ('+sqmRoles[name]+')':'');select.appendChild(option);}
+ for(const name of sqmAvailableInterfaces()){const option=document.createElement('option');option.value=name;option.textContent=sqmInterfaceLabel(name);select.appendChild(option);}
  $('sqm_add_error').textContent='';$('sqm_add_continue').disabled=select.options.length<2;
  $('sqm_add_dialog').showModal();select.focus();
 }
@@ -606,21 +727,29 @@ function setSqmInterfaces(){
  const names=[...new Set([...sqmInterfaces,...Object.keys(sqmQueues),...Object.keys(sqmRules)])];
  names.sort((a,b)=>Number(b===sqmSummaryBase?.primary_interface)-Number(a===sqmSummaryBase?.primary_interface)||a.localeCompare(b));
  if(!names.includes(sqmSelected))sqmSelected=sqmSummaryBase?.selected_interface&&names.includes(sqmSummaryBase.selected_interface)?sqmSummaryBase.selected_interface:sqmSummaryRule?.selected_interface&&names.includes(sqmSummaryRule.selected_interface)?sqmSummaryRule.selected_interface:names[0]||'';
- $('sqm_if').value=sqmSelected;$('sqm_interface_title').textContent=sqmSelected||'Interface';
+ if(sqmModeSaved.mode==='single')sqmSelected=sqmModeSaved.interface;
+ $('sqm_if').value=sqmSelected;$('sqm_interface_title').textContent=sqmInterfaceLabel(sqmSelected)||'Interface';
 }
 function sqmInterfaceControls(){
  const pending=!sqmReady();$('sqm_if').disabled=pending;$('sqm_back').disabled=pending;
+ const modePending=pending||!sqmLoaded||!!sqmSummaryBaseError||!sqmRuleLoaded||!!sqmSummaryRuleError;
+ $('sqm_mode').disabled=modePending;$('sqm_mode_interface').disabled=modePending||val('sqm_mode')!=='single';
+ const changed=val('sqm_mode')!==sqmModeSaved.mode||(val('sqm_mode')==='single'&&val('sqm_mode_interface')!==sqmModeSaved.interface);
+ $('sqm_mode_apply').disabled=modePending||!changed||(val('sqm_mode')==='single'&&!sqmQueues[val('sqm_mode_interface')]);
  $('sqm_add').disabled=pending||!sqmLoaded||!sqmAvailableInterfaces().length;
  document.querySelectorAll('[data-sqm-edit]').forEach(button=>button.disabled=pending);
- document.querySelectorAll('#sqm_base input,#sqm_base select,#sqm_base button').forEach(control=>control.disabled=busy||!!sqmPromise||!sqmLoaded||!sqmInterfaces.includes(sqmSelected));
+ document.querySelectorAll('[data-sqm-toggle]').forEach(input=>{input.disabled=pending||(input.dataset.sqmToggle==='queue'?(!sqmLoaded||!sqmRuleLoaded||!!sqmSummaryBaseError||!!sqmSummaryRuleError):(!sqmRuleLoaded||!!sqmSummaryRuleError||!sqmBaselineOn(input.dataset.interface)));});
+ $('sqm_editor_unit').disabled=pending;
+ document.querySelectorAll('#sqm_identity input,#sqm_identity button').forEach(control=>control.disabled=pending||!sqmLoaded);
+ document.querySelectorAll('#sqm_base input,#sqm_base select,#sqm_base button').forEach(control=>control.disabled=sqmCachePending||busy||!!sqmPromise||!sqmLoaded||!sqmInterfaces.includes(sqmSelected));
  sqmRuleControls();
 }
 function sqmDraft(){return {interface:sqmSelected,enabled:$('sqm_en').checked?'1':'0',download:sqmRateInKbytes('sqm_down'),upload:sqmRateInKbytes('sqm_up'),qdisc:val('sqm_qd'),script:val('sqm_sc')};}
 function renderSqmInterface(iface){
- sqmSelected=iface;$('sqm_interface_title').textContent=iface||'Interface';const c=sqmDrafts[iface]||sqmBaselines[iface]||{};$('sqm_if').value=iface;$('sqm_en').checked=c.enabled==='1';
+ sqmSelected=iface;$('sqm_interface_title').textContent=sqmInterfaceLabel(iface)||'Interface';
+ $('sqm_name').value=sqmNameDrafts[iface]??sqmNames[iface]??'';$('sqm_name').placeholder=sqmRoles[iface]?.split(' · ')[0]||iface;$('sqm_name_out').textContent='';const c=sqmDrafts[iface]||sqmBaselines[iface]||{};$('sqm_if').value=iface;$('sqm_en').checked=c.enabled==='1';
  setSqmRate('sqm_down',c.download);setSqmRate('sqm_up',c.upload);$('sqm_qd').value=c.qdisc||'cake';$('sqm_sc').value=c.script||'piece_of_cake.qos';
- const wan=(sqmRoles[iface]||'').includes('WAN');$('sqm_ingress_label').textContent=wan?'Download':'Upload';$('sqm_egress_label').textContent=wan?'Upload':'Download';$('sqm_direction_note').textContent=wan?'WAN queue: ingress is download; egress is upload.':'LAN queue: ingress is client upload; egress is client download.';
- if($('sqm_interface').hidden)$('sqm_direction_note').textContent='Bandwidth and daily limits by interface.';
+ const wan=sqmIsWan(iface);$('sqm_ingress_label').textContent=wan?'Download':'Upload';$('sqm_egress_label').textContent=wan?'Upload':'Download';$('sqm_editor_note').textContent=wan?'WAN: ingress DL · egress UL':'LAN: ingress UL · egress DL';
  $('sqmout').textContent=sqmQueues[iface]?'':'Not applied · Apply baseline to create';
 }
 function selectSqmInterface(iface){
@@ -628,18 +757,24 @@ function selectSqmInterface(iface){
  rememberSqmDraft();
  renderSqmInterface(iface);renderSqmRuleInterface(iface);sqmInterfaceControls();
 }
-function loadSqmForNavigation(){if(busy)return Promise.resolve(false);if(!sqmLoaded&&!sqmRuleLoaded)initSqmUnit();return Promise.all([loadSqmBase(sqmLoaded),loadSqmRule(sqmRuleLoaded)]);}
-async function loadSqm(){if(busy)return;initSqmUnit();return Promise.all([loadSqmBase(),loadSqmRule()]);}
-async function loadSqmBase(preserveDrafts=false){if(sqmPromise)return sqmPromise;if(preserveDrafts&&sqmLoaded&&sqmSelected)sqmDrafts[sqmSelected]=sqmDraft();
- sqmPromise=(async()=>{try{const j=await api('/api/sqm');if(!j.ok)throw new Error(j.output||'SQM load failed');sqmSummaryBase=j;sqmSummaryBaseError='';initSqmUnit();const c=j.config||{};
- sqmQueues=Object.fromEntries((j.queues||[c]).filter(q=>q.interface).map(q=>[q.interface,q]));sqmBaselines=Object.fromEntries((j.baseline_queues||j.queues||[j.baseline_config||c]).filter(q=>q.interface).map(q=>[q.interface,q]));sqmRoles=j.interface_roles||{};sqmInterfaces=j.interfaces||[];
- setSqmInterfaces();if(!preserveDrafts)delete sqmDrafts[sqmSelected];renderSqmInterface(sqmSelected);if(sqmRuleSelected!==sqmSelected)renderSqmRuleInterface(sqmSelected);
- sqmLoaded=true;renderSqmSummary();}catch(e){$('sqmout').textContent='SQM load failed: '+e.message;sqmSummaryBaseError=$('sqmout').textContent;renderSqmSummary();}})().finally(()=>{sqmPromise=null;sqmInterfaceControls();});sqmInterfaceControls();return sqmPromise;
+function loadSqmView(preserveDrafts,refreshRouter=false){if(busy)return Promise.resolve(false);if(sqmViewPromise)return sqmViewPromise;
+ initSqmUnit();sqmViewWaiting=true;sqmSummaryBaseError='';sqmSummaryRuleError='';qosStatusError='';renderSqmLoading();
+ sqmViewPromise=Promise.all([loadSqmBase(preserveDrafts,preserveDrafts,refreshRouter),loadSqmRule(preserveDrafts),loadQosStatus()]).finally(()=>{sqmViewPromise=null;sqmViewWaiting=false;renderSqmLoading();});return sqmViewPromise;
+}
+function loadSqmForNavigation(){return loadSqmView(sqmLoaded||sqmRuleLoaded);}
+function loadSqm(){return loadSqmView(false,true);}
+async function loadSqmBase(preserveDrafts=false,preserveName=preserveDrafts,refreshRouter=true){if(sqmPromise)return sqmPromise;if(preserveDrafts&&sqmLoaded&&sqmSelected)sqmDrafts[sqmSelected]=sqmDraft();
+ if(preserveName&&sqmLoaded&&sqmSelected)sqmNameDrafts[sqmSelected]=val('sqm_name');
+ sqmPromise=(async()=>{try{const j=await api('/api/sqm'+(refreshRouter?'?refresh=1':''));if(j.pending){sqmCachePending=true;sqmSummaryBaseError='';renderSqmLoading();return;}sqmCachePending=false;if(!j.ok)throw new Error(j.output||'SQM load failed');sqmSummaryBase=j;sqmSummaryBaseError='';initSqmUnit();const c=j.config||{};
+ sqmQueues=Object.fromEntries((j.queues||[c]).filter(q=>q.interface).map(q=>[q.interface,q]));sqmBaselines=Object.fromEntries((j.baseline_queues||j.queues||[j.baseline_config||c]).filter(q=>q.interface).map(q=>[q.interface,q]));sqmRoles=j.interface_roles||{};sqmInterfaces=j.interfaces||[];sqmNames=j.interface_names||{};sqmWanInterface=j.wan_interface||'';
+ sqmModeSaved=j.sqm_mode||{mode:'multiple',interface:''};if(!preserveDrafts)sqmModeDraft=null;
+ setSqmInterfaces();if(!preserveDrafts)delete sqmDrafts[sqmSelected];if(!preserveName)delete sqmNameDrafts[sqmSelected];renderSqmInterface(sqmSelected);if(sqmRuleSelected!==sqmSelected)renderSqmRuleInterface(sqmSelected);
+ sqmLoaded=true;renderSqmRuleInterface(sqmSelected);renderSqmSummary();}catch(e){sqmCachePending=false;$('sqmout').textContent='SQM load failed: '+e.message;sqmSummaryBaseError=$('sqmout').textContent;renderSqmSummary();}})().finally(()=>{sqmPromise=null;sqmInterfaceControls();});sqmInterfaceControls();return sqmPromise;
 }
 async function saveSqm(){if(!sqmLoaded||!sqmInterfaces.includes(sqmSelected))return;return settingsAction('sqm','sqmout',async()=>{
  const iface=sqmSelected,draft=sqmDraft();sqmInterfaceControls();
  try{const j=await api('/api/sqm',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...draft,interface:iface,enabled:draft.enabled==='1'})});
- showResult($('sqmout'),j,'Applied '+iface);if(j.ok){sqmBaselines[iface]=draft;delete sqmDrafts[iface];await Promise.all([loadSqmBase(),loadSqmRule(true)]);renderSqmSummary();}else{sqmSummaryBaseError='Apply failed · Reload to verify saved queues';renderSqmSummary();}}finally{sqmInterfaceControls();}
+ showResult($('sqmout'),j,'Applied '+iface);if(j.ok){sqmBaselines[iface]=draft;delete sqmDrafts[iface];await Promise.all([loadSqmBase(false,true),loadSqmRule(true)]);renderSqmSummary();}else{sqmSummaryBaseError='Apply failed · Reload to verify saved queues';renderSqmSummary();}}finally{sqmInterfaceControls();}
 
  }).finally(sqmInterfaceControls);}
 const fmtGb=v=>(+v||0)/(1024**3);
@@ -653,6 +788,7 @@ function sqmUnitConfig(unit){return SQM_RATE_UNITS[unit]||SQM_RATE_UNITS['KB/s']
 function sqmFormat(value,decimals){if(!Number.isFinite(value))return '0';return String(Number(value.toFixed(decimals)));}
 function sqmApplyUnitMetadata(unit){
 const cfg=sqmUnitConfig(unit);document.querySelectorAll('.sqm-rate-unit').forEach(el=>el.textContent=unit);
+$('sqm_editor_unit').value=unit;
 SQM_RATE_INPUTS.forEach(id=>{const input=$(id);if(input){input.step=cfg.step;}});
 }
 function initSqmUnit(){
@@ -664,20 +800,22 @@ function changeSqmUnit(next){
 const select=$('sqm_unit'),previous=select?.dataset.unit||'KB/s',from=sqmUnitConfig(previous),to=sqmUnitConfig(next);
 if(!SQM_RATE_UNITS[next])next='KB/s';
 SQM_RATE_INPUTS.forEach(id=>{const input=$(id),number=Number(input?.value);if(input&&Number.isFinite(number))input.value=sqmFormat(number*from.kbPerUnit/to.kbPerUnit,to.decimals);});
-if(select){select.value=next;select.dataset.unit=next;}sqmApplyUnitMetadata(next);try{localStorage.setItem('opennds-sqm-unit',next);}catch(e){}renderSqmSummary();
+if(select){select.value=next;select.dataset.unit=next;}sqmApplyUnitMetadata(next);try{localStorage.setItem('opennds-sqm-unit',next);}catch(e){}renderSqmSummary();if(qosStatusData)renderQosStatus(qosStatusData);
 }
 function sqmRateInKbytes(id){const number=Number(val(id));if(!Number.isFinite(number)||number<0)return val(id);return sqmFormat(number*sqmUnitConfig($('sqm_unit').value).kbPerUnit,6);}
 function setSqmRate(id,kbytes){$(id).value=sqmFormat(Number(kbytes||0)/sqmUnitConfig($('sqm_unit').value).kbPerUnit,sqmUnitConfig($('sqm_unit').value).decimals);}
 let sqmRulePromise=null,sqmRuleLoaded=false,sqmRuleSelected='',sqmRules={},sqmRuleDrafts={},sqmRuleSaving=false;
-function sqmRuleControls(){document.querySelectorAll('#sqm_daily input,#sqm_daily button').forEach(control=>control.disabled=busy||!!sqmRulePromise||sqmRuleSaving||!sqmRuleLoaded||!sqmRules[sqmSelected]);}
+function sqmRuleControls(){const off=!sqmBaselineOn(sqmSelected);$('sqm_daily').classList.toggle('sqm-daily-disabled',off);$('sqm_daily').setAttribute('aria-disabled',String(off));$('sqm_daily_disabled_note').hidden=!off;$('sqm_daily_disabled_note').textContent=sqmLoaded?'Enable Baseline to use Daily.':'Load Baseline to use Daily.';document.querySelectorAll('#sqm_daily input,#sqm_daily button').forEach(control=>control.disabled=sqmCachePending||busy||!!sqmPromise||!!sqmRulePromise||sqmRuleSaving||!sqmRuleLoaded||!sqmRules[sqmSelected]||off);if(off&&sqmLoaded)$('sqm_rule_en').checked=false;}
 function sqmRuleDraft(){return {enabled:$('sqm_rule_en').checked,threshold_gb:val('sqm_rule_gb'),download:sqmRateInKbytes('sqm_rule_down'),upload:sqmRateInKbytes('sqm_rule_up')};}
 function renderSqmRuleInterface(iface){
  sqmRuleSelected=iface;const saved=sqmRules[iface],draft=sqmRuleDrafts[iface]||saved;
  $('sqm_daily').hidden=sqmRuleLoaded&&!saved;$('sqm_daily_unavailable').hidden=!sqmRuleLoaded||!!saved;
  if(!saved||!draft)return;
- $('sqm_rule_en').checked=!!draft.enabled;$('sqm_rule_gb').value=draft.threshold_gb;setSqmRate('sqm_rule_down',draft.download);setSqmRate('sqm_rule_up',draft.upload);
+ if(sqmLoaded&&!sqmBaselineOn(iface)&&sqmRuleDrafts[iface])sqmRuleDrafts[iface].enabled=false;
+ $('sqm_rule_en').checked=(!sqmLoaded||sqmBaselineOn(iface))&&!!draft.enabled;$('sqm_rule_gb').value=draft.threshold_gb;setSqmRate('sqm_rule_down',draft.download);setSqmRate('sqm_rule_up',draft.upload);
  const status=saved.error?'Error':!saved.enabled?'Off':saved.forced_today?'Forced':saved.active?'Active':'Waiting';$('sqm_rule_out').textContent=saved.error||'';
- $('sqm_rule_scope').textContent='Target: '+iface+' · This LAN’s tracked IPv4 WAN traffic · Resets at midnight.';
+ const wan=sqmIsWan(iface);$('sqm_rule_scope').textContent=wan?'All WAN traffic · Resets at midnight.':'LAN WAN usage · Resets at midnight.';
+ $('sqm_rule_ingress_label').textContent=(wan?'Download':'Upload')+' after threshold';$('sqm_rule_egress_label').textContent=(wan?'Upload':'Download')+' after threshold';
  $('sqm_rule_note').textContent=`${status} · ${fmtGb(saved.today_bytes).toFixed(2)} / ${saved.threshold_gb} GB · ${saved.today_date}`+(saved.tracking_since?' · Tracked since '+ts(saved.tracking_since):' · Accounting starts with the next sample');
 }
 async function loadSqmRule(preserveDrafts=false){if(sqmRulePromise)return sqmRulePromise;if(preserveDrafts&&sqmRuleLoaded&&sqmRuleSelected&&sqmRules[sqmRuleSelected])sqmRuleDrafts[sqmRuleSelected]=sqmRuleDraft();
@@ -687,7 +825,7 @@ async function loadSqmRule(preserveDrafts=false){if(sqmRulePromise)return sqmRul
  }catch(error){$('sqm_rule_out').textContent='Daily rule load failed: '+error.message;sqmSummaryRuleError=$('sqm_rule_out').textContent;renderSqmSummary();return false;}
  })().finally(()=>{sqmRulePromise=null;sqmInterfaceControls();});sqmInterfaceControls();return sqmRulePromise;
 }
-async function saveSqmRule(forceToday=false){if(!sqmRuleLoaded||sqmRulePromise||sqmRuleSaving||!sqmRules[sqmSelected])return;if(forceToday&&!confirm('Apply '+sqmRuleSelected+' daily rates until midnight?'))return;
+async function saveSqmRule(forceToday=false){if(!sqmRuleLoaded||sqmRulePromise||sqmRuleSaving||!sqmRules[sqmSelected]||!sqmBaselineOn(sqmSelected))return;if(forceToday&&!confirm('Apply '+sqmRuleSelected+' daily rates until midnight?'))return;
  return settingsAction('sqm','sqm_rule_out',async()=>{const iface=sqmRuleSelected,draft=sqmRuleDraft();sqmRuleSaving=true;sqmInterfaceControls();
  try{const j=await api('/api/sqm/conditional',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({interface:iface,...draft,force_today:forceToday})});
  showResult($('sqm_rule_out'),j,forceToday?'Applied today':'Saved');if(j.ok){delete sqmRuleDrafts[iface];await Promise.all([loadSqmRule(),loadSqmBase(true)]);}}
@@ -713,10 +851,12 @@ busy=true;out.textContent=`Uploading · ${files.length} files…`;try{const fd=n
 }catch(e){out.textContent='Upload failed: '+e.message;}finally{busy=false;}}
 setOverviewRange(overviewRangeSecs);
 setClientRange(clientRangeSecs);
+// Retry only an unavailable settings snapshot; ordinary polls preserve editor drafts.
+async function loadSqmStatus(){await Promise.all([loadQosStatus(),...(sqmCachePending?[loadSqmBase(true,true,false)]:[])]);}
 // Poll only read-only tabs; configuration and template uploads are never interrupted.
 (async function poll(){
   const started=performance.now();
-  if(!document.hidden&&!busy)await ({overview:loadOverview,clients:loadClients,status:loadStatus,logs:loadLogs,sqm:loadQosStatus,limits:loadQosStatus})[current]?.().catch(()=>{});
+  if(!document.hidden&&!busy)await ({overview:loadOverview,clients:loadClients,status:loadStatus,logs:loadLogs,sqm:loadSqmStatus,limits:loadQosStatus})[current]?.().catch(()=>{});
   setTimeout(poll,Math.max(0,1000-(performance.now()-started)));
 })();
 window.addEventListener('opennds-themechange',()=>{if(current==='overview')drawTraffic(overviewData?.history||[]);if($('client_detail').open){drawClientTraffic(clientHistory);}syncClientPanbar();});

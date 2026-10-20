@@ -70,7 +70,7 @@ try:
         'tc qdisc add dev wan0 root cake bandwidth 20Mbit besteffort nat; '
         'tc qdisc add dev ifb-test root cake bandwidth 20Mbit besteffort nat; '
         'tc qdisc add dev wan0 handle ffff: ingress; '
-        'tc filter add dev wan0 parent ffff: protocol all pref 10 matchall action mirred egress redirect dev ifb-test')
+        'tc filter add dev wan0 parent ffff: protocol all pref 10 u32 match u32 0 0 action mirred egress redirect dev ifb-test')
     apply()
     nft, _ = qos.nft_rules('wan0', networks, clients, state)
     run('nft -f -', data=nft.encode())

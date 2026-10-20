@@ -30,8 +30,10 @@ function fixture(path){
   {name:'guests',device:'br-visitors.37',subnets:['172.20.7.0/24'],up:true,primary:false,eligible:true,mode:state.guestMode||'portal',zone:'visitors'},
   {name:'wan',device:'eth0',subnets:['192.168.122.0/24'],up:true,primary:false,eligible:false,mode:'unmanaged',role:'WAN',reason:'Upstream / WAN'}]};
  if(path==='/api/punishment')return state.punishment;
- if(path==='/api/sqm')return {ok:true,configured:true,config:state.sqm,baseline_config:state.baselineSqm||state.sqm,baseline_queues:[state.baselineSqm||state.sqm,...(state.extraSqm?[state.extraSqm]:[])],selected_interface:'br-lan',primary_interface:'br-lan',queues:[state.sqm,...(state.extraSqm?[state.extraSqm]:[])],interfaces:['br-lan','eth2','eth0'],interface_roles:{'br-lan':'lan · LAN','eth2':'piso · LAN','eth0':'wan · WAN'}};
- if(path==='/api/sqm/conditional'){const primary={...state.rule,interface:'br-lan',network:'lan',available:true,tracking_since:now-100},extra={ok:true,interface:'eth2',network:'piso',available:true,enabled:false,threshold_gb:5,download:250,upload:500,today_bytes:123456,today_date:'2026-10-08',wan_interface:'eth0',active:false,tracking_since:now-100,...state.extraRule};return {...primary,selected_interface:'br-lan',rules:[primary,extra]};}
+ if(path==='/api/sqm/mode')return {ok:true,sqm_mode:state.sqmMode,output:'Mode applied'};
+ if(path==='/api/sqm/name')return {ok:true,name:state.savedSqmName||''};
+ if(path==='/api/sqm')return {ok:true,sqm_mode:state.sqmMode||{mode:'multiple',interface:''},interface_names:state.sqmNames||{},wan_interface:'eth0',configured:true,config:state.sqm,baseline_config:state.baselineSqm||state.sqm,baseline_queues:[state.baselineSqm||state.sqm,...(state.extraSqm?[state.extraSqm]:[])],selected_interface:'br-lan',primary_interface:'br-lan',queues:[state.sqm,...(state.extraSqm?[state.extraSqm]:[])],interfaces:['br-lan','eth2','eth0'],interface_roles:{'br-lan':'lan · LAN','eth2':'piso · LAN','eth0':'wan · WAN'}};
+ if(path==='/api/sqm/conditional'){const primary={...state.rule,interface:'br-lan',network:'lan',available:true,tracking_since:now-100},extra={ok:true,interface:'eth2',network:'piso',available:true,enabled:false,threshold_gb:5,download:250,upload:500,today_bytes:123456,today_date:'2026-10-08',wan_interface:'eth0',active:false,tracking_since:now-100,...state.extraRule};return {...primary,selected_interface:'br-lan',rules:[primary,extra,{interface:'eth0',network:'WAN (all traffic)',available:true,usage_scope:'all_wan',enabled:false,threshold_gb:10,download:2500,upload:1000,today_bytes:99,today_date:'2026-10-13',wan_interface:'eth0',active:false,...state.wanRule}]};}
  if(path==='/api/portal/types')return {ok:true,current:'custom',types:[{id:'default',name:'Default'},{id:'custom',name:'Cats'}]};
  if(path==='/api/portal/fas')return {ok:true,url:'http://192.168.1.198:8080',router_ready:true,manager_mode:'portal',old_portal_archived:false};
  return {ok:true,output:'Action completed'};
@@ -47,11 +49,12 @@ function fixture(path){
  if(ruleDelay&&path==='/api/sqm/conditional'&&req.method()==='GET')await new Promise(r=>setTimeout(r,ruleDelay));
  if(networkFail===path&&req.method()!=='GET')return route.abort('failed');
  if(delay&&path==='/api/limits')await new Promise(r=>setTimeout(r,delay));
- if(req.method()==='GET')reads.push(path);else{writes.push({path,method:req.method(),body:req.postDataJSON()});if(path==='/api/networks'&&fail!==path){state.mode=req.postDataJSON().modes.lan;state.guestMode=req.postDataJSON().modes.guests;}if(path==='/api/sqm'&&fail!==path){const body=req.postDataJSON(),saved={...body,enabled:body.enabled?'1':'0'};if(body.interface==='br-lan'){if(state.baselineSqm){state.baselineSqm=saved;state.sqm=state.rule.active?{...saved,download:state.rule.download,upload:state.rule.upload}:saved;}else state.sqm=saved;}else state.extraSqm=saved;}if(path==='/api/sqm/conditional'&&fail!==path){const body=req.postDataJSON();if(body.interface==='eth2')state.extraRule={...state.extraRule,...body,forced_today:!!body.force_today,active:!!body.force_today};else{state.rule={...state.rule,...body};if(state.baselineSqm){state.rule.active=!!body.enabled&&(!!body.force_today||state.rule.active);state.sqm=state.rule.active?{...state.baselineSqm,download:state.rule.download,upload:state.rule.upload}:{...state.baselineSqm};}}}if(path==='/api/mode')state.mode=req.postDataJSON().mode;if(path==='/api/config')state.config=req.postDataJSON().content;}
+ if(req.method()==='GET')reads.push(path);else{writes.push({path,method:req.method(),body:req.postDataJSON()});if(path==='/api/punishment'&&fail!==path){const body=req.postDataJSON();state.punishment={...state.punishment,...body};}if(path==='/api/sqm/mode'&&fail!==path){state.sqmMode=req.postDataJSON();if(state.sqmMode.mode==='single'){for(const key of ['sqm','baselineSqm','extraSqm'])if(state[key])state[key].enabled=state[key].interface===state.sqmMode.interface?'1':'0';for(const [iface,key] of [['br-lan','rule'],['eth2','extraRule'],['eth0','wanRule']])if(iface!==state.sqmMode.interface)state[key]={...state[key],enabled:false,active:false,forced_today:false};}}if(path==='/api/sqm/name'&&fail!==path){const body=req.postDataJSON();state.savedSqmName=body.name.trim();state.sqmNames||={};if(state.savedSqmName)state.sqmNames[body.interface]=state.savedSqmName;else delete state.sqmNames[body.interface];}if(path==='/api/networks'&&fail!==path){state.mode=req.postDataJSON().modes.lan;state.guestMode=req.postDataJSON().modes.guests;}if(path==='/api/sqm'&&fail!==path){const body=req.postDataJSON(),saved={...body,enabled:body.enabled?'1':'0'};if(body.interface==='br-lan'){if(state.baselineSqm){state.baselineSqm=saved;state.sqm=state.rule.active?{...saved,download:state.rule.download,upload:state.rule.upload}:saved;}else state.sqm=saved;}else state.extraSqm=saved;}if(path==='/api/sqm'&&fail!==path&&!req.postDataJSON().enabled){const iface=req.postDataJSON().interface,key=iface==='br-lan'?'rule':iface==='eth0'?'wanRule':'extraRule';state[key]={...state[key],enabled:false,active:false,forced_today:false,error:''};}if(path==='/api/sqm/conditional'&&fail!==path){const body=req.postDataJSON();if(body.interface==='eth0')state.wanRule={...state.wanRule,...body,active:!!body.force_today,forced_today:!!body.force_today};else if(body.interface==='eth2')state.extraRule={...state.extraRule,...body,forced_today:!!body.force_today,active:!!body.force_today};else{state.rule={...state.rule,...body};if(state.baselineSqm){state.rule.active=!!body.enabled&&(!!body.force_today||state.rule.active);state.sqm=state.rule.active?{...state.baselineSqm,download:state.rule.download,upload:state.rule.upload}:{...state.baselineSqm};}}}if(path==='/api/mode')state.mode=req.postDataJSON().mode;if(path==='/api/config')state.config=req.postDataJSON().content;}
  const response=fail===path?{ok:false,output:'QA API failure '+long}:fixture(path);
  if(path==='/api/clients'&&response.ok)for(let i=0;i<clientRows;i++)response.data.clients['scroll-'+i]={...sample,mac:'02:00:00:01:'+Math.floor(i/256).toString(16).padStart(2,'0')+':'+(i%256).toString(16).padStart(2,'0'),hostname:'Scroll device '+String(i).padStart(3,'0')};
  return route.fulfill({contentType:'application/json',body:JSON.stringify(response)});});
  const load=async tab=>{if(tab==='clients')await page.evaluate(()=>{try{localStorage.removeItem('opennds-client-network');localStorage.removeItem('opennds-client-filter');}catch(e){}});await page.goto('http://manager.test/?qa='+Date.now()+Math.random()+'#'+tab);await page.evaluate(async tab=>{await ({overview:loadOverview,clients:loadClients,portal:loadHostedPortalStatus,sqm:loadSqm,mode:loadMode,limits:loadLimits,punishment:loadPunishment,status:loadStatusConfig,logs:loadLogs})[tab]();if(tab==='overview'){await loadOverviewHistory();}if(tab==='sqm')openSqmEditor(sqmSelected);await document.fonts.ready;},tab);};
+ const setSqmUnit=async unit=>{const open=await page.locator('#sqm_interface').evaluate(el=>el.open);await page.locator(open?'#sqm_editor_unit':'#sqm_unit').selectOption(unit);};
  const chooseSqm=async iface=>{await page.evaluate(iface=>{if(!sqmListedInterfaces().includes(iface))sqmAdded.add(iface);openSqmEditor(iface);},iface);};
  const geometry=async(name,width)=>{const found=await page.evaluate(()=>{
   const issues=[],visible=el=>el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden',allowed=el=>{for(let p=el;p&&p!==document.body;p=p.parentElement){if(/auto|scroll|hidden/.test(getComputedStyle(p).overflowX)&&p.scrollWidth>p.clientWidth+1)return true;}return false;};
@@ -92,6 +95,48 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
  const checks=[];
 
  const check=async(name,fn)=>{try{await fn();checks.push({name,pass:true});}catch(e){checks.push({name,pass:false,error:e.message});}};
+ await check('SQM status lists actual queues and keeps errors compact across refreshes',async()=>{
+ await load('sqm');await page.locator('#sqm_back').click();
+ const data={ok:true,stale:false,queues:[{interface:'br-lan',name:'Home',enabled:false,state:'off',download:12500,upload:12500},{interface:'eth0',name:'Internet',enabled:true,state:'error',download:12500,upload:6250,message:'Classifier error <script>literal</script>'}],networks:[{interface:'br-lan',network:'lan',placement:'wan',queue_interface:'eth0',state:'error',clients:4,message:'Classifier error'}]};
+ await page.evaluate(data=>renderQosStatus(data),data);
+ assert.deepEqual(await page.locator('#qos_status_sqm .qos-status-row strong').allTextContents(),['Home (br-lan)','Internet (eth0)']);
+ assert.equal(await page.locator('#qos_status_sqm details').evaluate(el=>el.open),false);assert.equal(await page.locator('#qos_status_sqm script').count(),0);
+ await page.locator('#qos_status_sqm summary').click();await page.locator('#qos_status_sqm summary').focus();await page.evaluate(data=>renderQosStatus(data),data);
+ assert.equal(await page.locator('#qos_status_sqm details').evaluate(el=>el.open),true);assert.equal(await page.locator('#qos_status_sqm summary').evaluate(el=>el===document.activeElement),true);
+ data.queues[1].state='active';data.queues[1].message='';await page.evaluate(data=>renderQosStatus(data),data);assert.equal(await page.locator('#qos_status_sqm details').count(),0);
+ });
+ await check('Single SQM shows one inline runtime badge without a separate status card',async()=>{
+ const before=structuredClone(state);
+ try{
+ state.sqmMode={mode:'single',interface:'eth0'};state.extraSqm={...state.sqm,interface:'eth0',enabled:'1'};
+ await load('sqm');await page.locator('#sqm_back').click();
+ const data={ok:true,stale:false,queues:[{interface:'br-lan',state:'off'},{interface:'eth0',state:'active'}],networks:[{interface:'br-lan',network:'lan',state:'active'},{interface:'eth2',network:'piso',state:'active'}]};
+ await page.evaluate(data=>{qosStatusData=data;renderSqmSummary();renderQosStatus(data);},data);
+ assert.equal(await page.locator('#sqm_status_card').isVisible(),false);assert.equal(await page.locator('[data-sqm-single-interface]').count(),1);
+ assert.equal(await page.locator('[data-sqm-single-interface] .qos-status-state').textContent(),'Active');assert.equal(await page.locator('#qos_status_limits .qos-status-row').count(),2);
+ await page.locator('#sqm_mode').selectOption('multiple');assert.equal(await page.locator('#sqm_status_card').isVisible(),false);
+ data.queues[1]={interface:'eth0',state:'error',message:'Queue failure <script>literal</script>'};await page.evaluate(data=>renderQosStatus(data),data);
+ assert.equal(await page.locator('[data-sqm-single-interface] .qos-status-state').textContent(),'Error');assert.equal(await page.locator('.sqm-single-diagnostics details').evaluate(e=>e.open),false);
+ assert.equal(await page.locator('.sqm-single-diagnostics script').count(),0);await page.locator('.sqm-single-diagnostics summary').click();await page.locator('.sqm-single-diagnostics summary').focus();
+ await page.evaluate(data=>renderQosStatus(data),data);assert.equal(await page.locator('.sqm-single-diagnostics details').evaluate(e=>e.open),true);assert.equal(await page.locator('.sqm-single-diagnostics summary').evaluate(e=>e===document.activeElement),true);
+ data.stale=true;data.queues[1].state='active';await page.evaluate(data=>renderQosStatus(data),data);assert.equal(await page.locator('[data-sqm-single-interface] .qos-status-state').evaluate(e=>e.classList.contains('qos-status-loading')),true);
+ data.stale=false;data.queues=[];await page.evaluate(data=>renderQosStatus(data),data);assert.equal(await page.locator('[data-sqm-single-interface] .qos-status-state').evaluate(e=>e.classList.contains('qos-status-loading')),true);
+ state.sqmMode={mode:'multiple',interface:''};await load('sqm');await page.locator('#sqm_back').click();assert.equal(await page.locator('#sqm_status_card').isVisible(),true);assert.equal(await page.locator('[data-sqm-single-interface]').count(),0);
+ }finally{for(const key of Object.keys(state))delete state[key];Object.assign(state,before);}
+ });
+ await check('SQM hides partial defaults behind a circular loader and keeps failed status invalid',async()=>{
+ try{
+ baseDelay=700;ruleDelay=1000;await page.goto('http://manager.test/?qa='+Math.random()+'#sqm');
+ await page.waitForFunction(()=>!!sqmPromise&&!!sqmRulePromise);
+ assert.equal(await page.locator('#sqm_loading').isVisible(),true);assert.equal(await page.locator('#sqm_content').isVisible(),false);
+ assert.equal(await page.locator('#sqm_loading .ui-spinner').count(),1);
+ await page.waitForFunction(()=>!sqmViewPromise&&sqmLoaded&&sqmRuleLoaded);assert.equal(await page.locator('#sqm_content').isVisible(),true);assert.equal(await page.locator('#sqm_loading').isVisible(),false);
+ await page.evaluate(()=>{sqmModeSaved={mode:'single',interface:'br-lan'};renderSqmSummary();});
+ fail='/api/qos/status';await page.evaluate(()=>loadQosStatus());assert.equal(await page.locator('[data-sqm-single-interface] .qos-status-state').textContent(),'Unavailable');
+ await page.evaluate(()=>{changeSqmUnit('Mb/s');renderSqmSummary();});assert.equal(await page.locator('[data-sqm-single-interface] [data-state=active]').count(),0);
+ fail='';await page.evaluate(()=>loadQosStatus());assert.equal(await page.locator('#sqm_load_error').isVisible(),false);
+ }finally{baseDelay=0;ruleDelay=0;fail='';}
+ });
  await check('runtime status preserves settings drafts and never claims active after failed or stale reads',async()=>{
   try{
    await load('sqm');await page.locator('#sqm_down').fill('321');
@@ -175,6 +220,22 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
  });
  await check('punishment distinguishes punished devices from shared traffic control',async()=>{
  await load('punishment');assert.equal(await page.locator('#pun_badge').textContent(),'0 punished');assert.equal(await page.locator('#pun_tc_status').textContent(),'Traffic control active');
+ });
+ await check('auto-punish toggle saves immediately and preserves unsaved rate drafts',async()=>{
+ const before=structuredClone(state.punishment);
+ try{
+ state.punishment.auto_punish_new=false;await load('punishment');assert.equal(await page.locator('#pun_auto_note').textContent(),'First connection only.');
+ assert.equal(await page.getByRole('switch',{name:'Auto-punish new users'}).isChecked(),false);
+ await page.locator('#pun_down').fill('333');await page.getByRole('switch',{name:'Auto-punish new users'}).check();await page.waitForFunction(()=>!busy);
+ assert.deepEqual(writes.at(-1).body,{auto_punish_new:true});assert.equal(await page.locator('#pun_auto_state').textContent(),'On');
+ assert.equal(await page.locator('#pun_down').inputValue(),'333');
+ await page.evaluate(async()=>{await show('clients');await show('punishment');});
+ assert.equal(await page.locator('#pun_auto').isChecked(),true);assert.equal(await page.locator('#pun_down').inputValue(),'333');
+ fail='/api/punishment';await page.locator('#pun_auto').uncheck();await page.waitForFunction(()=>!busy);
+ assert.equal(await page.locator('#pun_auto').isChecked(),true);assert.equal(await page.locator('#pun_auto').isEnabled(),true);
+ fail='';await page.locator('#pun_auto').uncheck();await page.waitForFunction(()=>!busy);assert.equal(await page.locator('#pun_auto_state').textContent(),'Off');
+ await page.reload();await page.waitForFunction(()=>punishmentLoaded&&!punishmentPromise);assert.equal(await page.locator('#pun_auto').isChecked(),false);
+ }finally{fail='';state.punishment=before;}
  });
  await check('logs preserve reading position and follow new entries only at the bottom',async()=>{
  try{
@@ -299,7 +360,7 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
  await page.evaluate(()=>loadClients());assert.equal(await page.locator('#client_network_tabs [aria-selected=true]').getAttribute('data-network'),'lan');
  });
  await check('client table refresh retains keyboard focus',async()=>{
- await load('clients');const button=page.locator('#ctable tr').filter({hasText:'Work laptop'}).locator('.client-name-edit');await button.focus();await page.evaluate(()=>loadClients());assert.equal(await button.evaluate(el=>el===document.activeElement),true);
+ await load('clients');const button=page.locator('#ctable tr').filter({hasText:'Work laptop'}).locator('.client-name-button');await button.focus();await page.evaluate(()=>loadClients());assert.equal(await button.evaluate(el=>el===document.activeElement),true);
  });
  await check('client polling preserves vertical and horizontal scroll with focus offscreen',async()=>{
  try{clientRows=50;
@@ -310,8 +371,8 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
  const before=await position();assert.ok(before.y>500);assert.ok(before.x>100);
  for(let i=0;i<3;i++){await page.evaluate(()=>loadClients());assert.deepEqual(await position(),before);assert.equal(await page.locator('#client_network_tabs [aria-selected=true]').evaluate(el=>el===document.activeElement),true);}
  // Moving focus to a row and panning must also survive fresh row rendering.
- await page.evaluate(()=>{document.querySelector('#ctable .client-name-edit').focus({preventScroll:true});});
- await page.evaluate(()=>loadClients());assert.deepEqual(await position(),before);assert.equal(await page.locator('#ctable .client-name-edit').first().evaluate(el=>el===document.activeElement),true);
+ await page.evaluate(()=>{document.querySelector('#ctable .client-name-button').focus({preventScroll:true});});
+ await page.evaluate(()=>loadClients());assert.deepEqual(await position(),before);assert.equal(await page.locator('#ctable .client-name-button').first().evaluate(el=>el===document.activeElement),true);
  await Promise.all([page.waitForResponse(response=>new URL(response.url()).pathname==='/api/clients'),page.evaluate(()=>{busy=false;})]);
  await page.waitForFunction(()=>!clientsPromise);assert.deepEqual(await position(),before);await page.evaluate(()=>{busy=true;});
  }}finally{clientRows=0;await page.evaluate(()=>{busy=false;});await page.setViewportSize({width:1440,height:1000});}
@@ -325,6 +386,30 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
  await check('Limits failed reload preserves edits and reports error',async()=>{
  await load('limits');await page.locator('#ld_up').fill('321');fail='/api/limits';await page.evaluate(()=>loadLimits());assert.equal(await page.locator('#ld_up').inputValue(),'321');assert.ok((await page.locator('#lim_default_out').textContent()).includes('QA API failure'));fail='';
  });fail='';
+ await check('SQM Single interface persists one choice; Multiple retains saved queues',async()=>{
+ const before=structuredClone(state);
+ try{
+ state.extraSqm={...state.sqm,interface:'eth2',enabled:'1'};state.extraRule={enabled:true};
+ await load('sqm');await page.locator('#sqm_back').click();
+ assert.equal(await page.locator('#sqm_mode').inputValue(),'multiple');
+ assert.equal(await page.locator('#sqm_mode_interface_field').isVisible(),false);
+ const count=writes.length;await page.locator('#sqm_mode').selectOption('single');await page.locator('#sqm_mode_interface').selectOption('eth2');
+ await page.evaluate(async()=>{await show('clients');await show('sqm');});
+ assert.equal(await page.locator('#sqm_mode_interface').inputValue(),'eth2');assert.equal(writes.length,count);
+ await page.locator('#sqm_mode_apply').click();await page.waitForFunction(()=>!busy);
+ assert.deepEqual(writes.at(-1).body,{mode:'single',interface:'eth2'});
+ assert.equal(await page.locator('.sqm-summary-interface').count(),1);assert.equal(await page.locator('#sqm_add').isVisible(),false);
+ assert.equal(state.sqm.enabled,'0');assert.equal(state.extraSqm.enabled,'1');assert.equal(state.rule.enabled,false);
+ await page.reload();await page.waitForFunction(()=>sqmLoaded&&sqmRuleLoaded&&!sqmPromise&&!sqmRulePromise);
+ assert.equal(await page.locator('#sqm_mode').inputValue(),'single');assert.equal(await page.locator('#sqm_mode_interface').inputValue(),'eth2');
+ fail='/api/sqm/mode';await page.locator('#sqm_mode_interface').selectOption('br-lan');await page.locator('#sqm_mode_apply').click();await page.waitForFunction(()=>!busy);
+ assert.equal(await page.locator('#sqm_mode_interface').inputValue(),'br-lan');assert.equal(state.sqmMode.interface,'eth2');
+ assert.equal(await page.locator('#sqm_mode_apply').isEnabled(),true);fail='';
+ await page.locator('#sqm_mode').selectOption('multiple');await page.locator('#sqm_mode_apply').click();await page.waitForFunction(()=>!busy);
+ assert.equal(await page.locator('.sqm-summary-interface').count(),2);assert.equal(await page.locator('#sqm_add').isVisible(),true);
+ assert.equal(state.sqm.enabled,'0');assert.equal(state.extraSqm.enabled,'1');
+ }finally{fail='';for(const key of Object.keys(state))delete state[key];Object.assign(state,before);}
+ });
  await check('SQM lists configured interfaces and adds only after an explicit choice',async()=>{
  state.extraSqm=null;state.extraRule=null;await load('sqm');await page.locator('#sqm_back').click();
  assert.equal(await page.locator('#sqm_interface').isVisible(),false);assert.equal(await page.locator('#sqm_summary').isVisible(),true);
@@ -336,6 +421,44 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
  await page.getByRole('button',{name:'Edit SQM eth2',exact:true}).click();assert.equal(await page.locator('#sqm_down').inputValue(),'333');assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'9');assert.equal(writes.length,n);
  await page.locator('#sqm_back').click();await page.locator('#sqm_add').click();assert.equal(await page.locator('#sqm_add_interface option[value="eth2"]').count(),0);await page.keyboard.press('Escape');assert.equal(await page.locator('#sqm_add').evaluate(el=>el===document.activeElement),true);
  });
+ await check('SQM summary switches preserve drafts and use saved settings',async()=>{
+ const originalSqm={...state.sqm},originalRule={...state.rule};
+ try{
+ await load('sqm');await page.locator('#sqm_down').fill('321');await page.locator('#sqm_rule_gb').fill('77');await page.locator('#sqm_back').click();
+ await page.getByRole('switch',{name:'SQM queue br-lan',exact:true}).click();await page.waitForFunction(()=>!busy&&!sqmPromise&&!sqmRulePromise);
+ assert.equal(writes.filter(w=>w.path==='/api/sqm').at(-1).body.download,originalSqm.download);
+ assert.equal(await page.getByRole('switch',{name:'SQM queue br-lan',exact:true}).isChecked(),false);
+ assert.equal(await page.getByRole('switch',{name:'Daily WAN br-lan',exact:true}).isEnabled(),false);assert.equal(state.rule.enabled,false);
+ await chooseSqm('br-lan');assert.equal(await page.locator('#sqm_down').inputValue(),'321');assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'77');
+ await page.keyboard.press('Escape');assert.equal(await page.locator('#sqm_interface').evaluate(el=>el.open),false);
+ fail='/api/sqm';await page.getByRole('switch',{name:'SQM queue br-lan',exact:true}).click();await page.waitForFunction(()=>!busy);
+ assert.equal(await page.getByRole('switch',{name:'SQM queue br-lan',exact:true}).isChecked(),false);assert.match(await page.locator('#sqm_summary_out').textContent(),/QA API failure/);
+ }finally{fail='';state.sqm=originalSqm;state.rule=originalRule;}
+ });
+ await check('SQM dialog keeps Back visible while fields scroll',async()=>{
+ for(const width of [320,851,1440]){
+ await page.setViewportSize({width,height:582});await load('sqm');
+ assert.equal(await page.locator('#sqm_interface').evaluate(el=>el.open),true);
+ const back=await page.locator('#sqm_back').boundingBox();await page.locator('#sqm_interface > .settings-body').evaluate(el=>{el.scrollTop=el.scrollHeight;});
+ assert.deepEqual(await page.locator('#sqm_back').boundingBox(),back);assert.ok(back.y>=0&&back.y+back.height<=582);
+ await page.keyboard.press('Escape');assert.equal(await page.locator('[data-sqm-edit="br-lan"]').evaluate(el=>el===document.activeElement),true);
+ }
+ await page.setViewportSize({width:1440,height:1000});
+ });
+ await check('new WAN entry has shared Daily and persistent names without applying a queue',async()=>{
+ state.wanRule=null;state.sqmNames={};await load('sqm');await page.locator('#sqm_back').click();
+ await page.locator('#sqm_add').click();await page.locator('#sqm_add_interface').selectOption('eth0');const n=writes.length;await page.locator('#sqm_add_continue').click();assert.equal(writes.length,n);
+ assert.equal(await page.locator('#sqm_daily').isVisible(),true);assert.match(await page.locator('#sqm_rule_scope').textContent(),/All WAN traffic/);
+ assert.equal(await page.locator('#sqm_rule_ingress_label').textContent(),'Download after threshold');assert.equal(await page.locator('#sqm_rule_egress_label').textContent(),'Upload after threshold');
+ await page.locator('#sqm_name').fill('Internet');await page.locator('#sqm_down').fill('333');await page.locator('#sqm_name_save').click();await page.waitForFunction(()=>!busy);
+ assert.deepEqual(writes.at(-1),{path:'/api/sqm/name',method:'PUT',body:{interface:'eth0',name:'Internet'}});
+ assert.equal(await page.locator('#sqm_interface_title').textContent(),'Internet (eth0)');assert.equal(await page.locator('#sqm_down').inputValue(),'333');
+ await page.locator('#sqm_back').click();assert.match(await page.locator('.sqm-summary-interface[data-interface="eth0"]').textContent(),/Internet \(eth0\)/);
+ await page.reload();await page.waitForFunction(()=>sqmLoaded&&sqmRuleLoaded&&!sqmPromise&&!sqmRulePromise);await page.evaluate(()=>{sqmAdded.add('eth0');openSqmEditor('eth0');});
+ assert.equal(await page.locator('#sqm_interface_title').textContent(),'Internet (eth0)');
+ fail='/api/sqm/name';await page.locator('#sqm_name').fill('Draft');await page.locator('#sqm_name_save').click();await page.waitForFunction(()=>!busy);assert.equal(await page.locator('#sqm_name').inputValue(),'Draft');assert.equal(await page.locator('#sqm_interface_title').textContent(),'Internet (eth0)');fail='';
+ state.wanRule=null;state.sqmNames={};
+ });
  await check('SQM failed reload preserves edits and reports error',async()=>{
  await load('sqm');await page.locator('#sqm_down').fill('321');fail='/api/sqm';await page.evaluate(()=>loadSqm());assert.equal(await page.locator('#sqm_down').inputValue(),'321');assert.ok((await page.locator('#sqmout').textContent()).includes('QA API failure'));fail='';
  });fail='';
@@ -345,16 +468,16 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
  await check('daily WAN loads saved enabled state independently of a failed Base load',async()=>{
  state.rule.enabled=true;fail='/api/sqm';await load('sqm');
  assert.equal(await page.locator('#sqm_rule_en').isChecked(),true);assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'50');
- assert.equal(await page.getByRole('button',{name:'Save daily rule',exact:true}).isEnabled(),true);
- assert.equal(await page.getByRole('button',{name:'Apply baseline',exact:true}).isEnabled(),false);
+ assert.equal(await page.getByRole('button',{name:'Save daily rule',exact:true,includeHidden:true}).isEnabled(),false);
+ assert.equal(await page.getByRole('button',{name:'Apply baseline',exact:true,includeHidden:true}).isEnabled(),false);
  assert.ok((await page.locator('#sqm_rule_note').textContent()).includes('Waiting'));fail='';
  });fail='';
  await check('failed initial daily load cannot save unchecked defaults',async()=>{
  for(const failure of ['api','network']){if(failure==='api')fail='/api/sqm/conditional';else readNetworkFail='/api/sqm/conditional';
- await load('sqm');assert.equal(await page.getByRole('button',{name:'Save daily rule',exact:true}).isEnabled(),false);assert.equal(await page.locator('#sqm_rule_en').isEnabled(),false);
- assert.equal(await page.getByRole('button',{name:'Apply baseline',exact:true}).isEnabled(),true);
+ await load('sqm');assert.equal(await page.getByRole('button',{name:'Save daily rule',exact:true,includeHidden:true}).isEnabled(),false);assert.equal(await page.locator('#sqm_rule_en').isEnabled(),false);
+ assert.equal(await page.getByRole('button',{name:'Apply baseline',exact:true,includeHidden:true}).isEnabled(),true);
  assert.ok((await page.locator('#sqm_rule_out').textContent()).includes('load failed'));const n=writes.length;await page.evaluate(()=>saveSqmRule());assert.equal(writes.length,n);fail='';readNetworkFail='';
- await page.evaluate(()=>loadSqmRule());assert.equal(await page.locator('#sqm_rule_en').isChecked(),true);assert.equal(await page.getByRole('button',{name:'Save daily rule',exact:true}).isEnabled(),true);}
+ await page.evaluate(()=>loadSqmRule());assert.equal(await page.locator('#sqm_rule_en').isChecked(),true);assert.equal(await page.getByRole('button',{name:'Save daily rule',exact:true,includeHidden:true}).isEnabled(),true);}
  });fail='';readNetworkFail='';
  await check('delayed daily load disables edits until saved values arrive',async()=>{
  ruleDelay=700;await page.goto('http://manager.test/?qa='+Math.random()+'#sqm');
@@ -369,18 +492,18 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
  state.rule.threshold_gb=50;
  });
  await check('daily interface editors isolate drafts, units, saves and summary',async()=>{
- state.extraRule=null;await load('sqm');await page.locator('#sqm_unit').selectOption('KB/s');
+ state.extraRule=null;state.extraSqm={...state.sqm,interface:'eth2',enabled:'1',download:1000,upload:500};await load('sqm');await setSqmUnit('KB/s');
  await page.locator('#sqm_down').fill('888');await page.locator('#sqm_rule_gb').fill('66');
  await chooseSqm('eth2');assert.equal(await page.locator('#sqm_rule_en').isChecked(),false);assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'5');
  await page.locator('#sqm_rule_gb').fill('9');await page.locator('#sqm_rule_down').fill('750');await page.locator('#sqm_rule_en').check();
- await page.locator('#sqm_unit').selectOption('Mb/s');await chooseSqm('br-lan');assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'66');
+ await setSqmUnit('Mb/s');await chooseSqm('br-lan');assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'66');
  await chooseSqm('eth2');assert.equal(await page.locator('#sqm_rule_down').inputValue(),'6');
  const primary={...state.rule};await page.getByRole('button',{name:'Save daily rule',exact:true}).click();await page.waitForFunction(()=>!busy&&!sqmRulePromise);
  const saved=writes.filter(w=>w.path==='/api/sqm/conditional').at(-1).body;assert.equal(saved.interface,'eth2');assert.equal(saved.threshold_gb,'9');assert.equal(saved.download,'750');assert.deepEqual(state.rule,primary);
  assert.equal(await page.locator('#sqm_if').inputValue(),'eth2');await chooseSqm('br-lan');assert.equal(await page.locator('#sqm_down').inputValue(),'7.104');
  await chooseSqm('br-lan');assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'66');
  assert.ok((await page.locator('.sqm-summary-daily-rule[data-interface="eth2"]').textContent()).includes('9 GB'));
- state.extraRule=null;await page.locator('#sqm_unit').selectOption('KB/s');
+ state.extraRule=null;await setSqmUnit('KB/s');
  });
  await check('Baseline stays separate from active Daily rates through reload, save and disable',async()=>{
  const originalSqm={...state.sqm},originalRule={...state.rule};
@@ -388,7 +511,7 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
   state.baselineSqm={...state.sqm,download:12500,upload:25000};
   state.sqm={...state.sqm,download:2500,upload:2500};
   Object.assign(state.rule,{enabled:true,active:true,error:'',download:2500,upload:2500});
-  await load('sqm');await page.locator('#sqm_unit').selectOption('Mb/s');
+  await load('sqm');await setSqmUnit('Mb/s');
   assert.equal(await page.locator('#sqm_base h4').textContent(),'Baseline');
   assert.equal(await page.locator('#sqm_daily h4').textContent(),'Daily');
   assert.equal(await page.locator('#sqm_down').inputValue(),'100');
@@ -419,15 +542,15 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
  state.extraSqm={enabled:'1',interface:'eth2',download:1000,upload:500,qdisc:'cake',script:'piece_of_cake.qos'};await load('sqm');
  for(const iface of ['br-lan','eth2']){const group=page.locator('.sqm-summary-interface[data-interface="'+iface+'"]');assert.equal(await group.locator('.sqm-summary-queue[data-interface="'+iface+'"]').count(),1);assert.equal(await group.locator('.sqm-summary-daily-rule[data-interface="'+iface+'"]').count(),1);}
  assert.equal(await page.locator('#sqm_interface #sqm_base').count(),1);assert.equal(await page.locator('#sqm_interface #sqm_daily').count(),1);assert.equal(await page.locator('#sqm_if').count(),1);assert.equal(await page.locator('#sqm_rule_if').count(),0);
- await chooseSqm('eth2');assert.ok((await page.locator('#sqm_rule_scope').textContent()).includes('eth2'));assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'5');state.extraSqm=null;
+ await chooseSqm('eth2');assert.match(await page.locator('#sqm_rule_scope').textContent(),/LAN WAN usage/);assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'5');state.extraSqm=null;
  });
  await check('failed daily interface save retains draft and selection',async()=>{
- await load('sqm');await chooseSqm('eth2');await page.locator('#sqm_rule_gb').fill('12');fail='/api/sqm/conditional';
+ state.extraSqm={...state.sqm,interface:'eth2',enabled:'1'};await load('sqm');await chooseSqm('eth2');await page.locator('#sqm_rule_gb').fill('12');fail='/api/sqm/conditional';
  await page.getByRole('button',{name:'Save daily rule',exact:true}).click();await page.waitForFunction(()=>!busy);assert.equal(await page.locator('#sqm_back').isEnabled(),true);assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'12');
  await chooseSqm('br-lan');await chooseSqm('eth2');assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'12');fail='';
  });fail='';
  await check('Apply today activates only selected interface and blocks changes during save',async()=>{
- state.extraRule=null;await load('sqm');await chooseSqm('eth2');
+ state.extraRule=null;state.extraSqm={...state.sqm,interface:'eth2',enabled:'1'};await load('sqm');await chooseSqm('eth2');
  ruleDelay=500;page.once('dialog',dialog=>dialog.accept());const primary={...state.rule};await page.getByRole('button',{name:'Apply today (WAN rule)',exact:true}).click();
  await page.waitForFunction(()=>sqmRuleSaving);assert.equal(await page.locator('#sqm_back').isEnabled(),false);
  await page.waitForFunction(()=>!busy&&!sqmRuleSaving);assert.deepEqual(state.rule,primary);assert.equal(await page.locator('#sqm_back').isEnabled(),true);
@@ -437,11 +560,11 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
  await check('SQM summary and daily fields honor saved units when Base loads later',async()=>{
  await page.evaluate(()=>localStorage.setItem('opennds-sqm-unit','Mb/s'));baseDelay=600;await load('sqm');
  assert.equal(await page.locator('#sqm_unit').inputValue(),'Mb/s');assert.equal(await page.locator('#sqm_rule_down').inputValue(),String(state.rule.download/125));
- assert.ok((await page.locator('#sqm_summary_queues').textContent()).includes('Mb/s'));baseDelay=0;await page.locator('#sqm_unit').selectOption('KB/s');
+ assert.ok((await page.locator('#sqm_summary_queues').textContent()).includes('Mb/s'));baseDelay=0;await setSqmUnit('KB/s');
  });baseDelay=0;
  await check('SQM summary shows saved queues and daily policy without including drafts',async()=>{
  state.extraSqm={enabled:'1',interface:'eth2',download:1000,upload:500,qdisc:'cake',script:'piece_of_cake.qos'};
- await load('sqm');await page.locator('#sqm_unit').selectOption('Mb/s');
+ await load('sqm');await setSqmUnit('Mb/s');
  const extra=page.locator('.sqm-summary-queue[data-interface="eth2"]');assert.ok((await extra.textContent()).includes('4 Mb/s'));assert.ok((await extra.textContent()).includes('8 Mb/s'));
  assert.ok((await page.locator('#sqm_summary_queues').textContent()).includes('Waiting'));assert.ok((await page.locator('#sqm_summary_queues').textContent()).includes('br-lan'));assert.ok((await page.locator('#sqm_summary_queues').textContent()).includes('50 GB'));
  const saved=await page.locator('#sqm_summary_queues').textContent();await chooseSqm('eth2');await page.locator('#sqm_down').fill('12');assert.equal(await page.locator('#sqm_summary_queues').textContent(),saved);
@@ -452,19 +575,19 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
  });fail='';
  await check('SQM editors keep independent interface drafts, units and queue settings',async()=>{
  state.extraSqm={enabled:'1',interface:'eth2',download:1000,upload:500,qdisc:'fq_codel',script:'simple.qos'};
- await load('sqm');await page.locator('#sqm_unit').selectOption('KB/s');
+ await load('sqm');await setSqmUnit('KB/s');
  assert.equal(await page.locator('#sqm_if').getAttribute('type'),'hidden');assert.equal(await page.locator('[data-sqm-edit=eth2]').count(),1);
  await page.locator('#sqm_down').fill('777');await page.locator('#sqm_rule_gb').fill('88');await chooseSqm('eth2');assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'5');
  assert.equal(await page.locator('#sqm_down').inputValue(),'1000');assert.equal(await page.locator('#sqm_up').inputValue(),'500');assert.equal(await page.locator('#sqm_qd').inputValue(),'fq_codel');
- await page.locator('#sqm_down').fill('222');await page.locator('#sqm_unit').selectOption('Mb/s');
+ await page.locator('#sqm_down').fill('222');await setSqmUnit('Mb/s');
  await chooseSqm('br-lan');assert.equal(await page.locator('#sqm_down').inputValue(),'6.216');assert.equal(await page.locator('#sqm_rule_gb').inputValue(),'88');
  await chooseSqm('eth2');assert.equal(await page.locator('#sqm_down').inputValue(),'1.776');
  const primary={...state.sqm};await page.getByRole('button',{name:'Apply baseline',exact:true}).click();await page.waitForFunction(()=>!busy);
  const saved=writes.filter(w=>w.path==='/api/sqm').at(-1).body;assert.equal(saved.interface,'eth2');assert.equal(saved.download,'222');assert.deepEqual(state.sqm,primary);
  await page.evaluate(()=>loadSqm());assert.equal(await page.locator('#sqm_if').inputValue(),'eth2');assert.equal(await page.locator('#sqm_down').inputValue(),'1.776');
- assert.ok((await page.locator('#sqm_rule_scope').textContent()).includes('eth2'));assert.equal(await page.locator('#sqm_daily').isVisible(),true);
+ assert.match(await page.locator('#sqm_rule_scope').textContent(),/LAN WAN usage/);assert.equal(await page.locator('#sqm_daily').isVisible(),true);
  await chooseSqm('eth0');assert.equal(await page.locator('#sqm_ingress_label').textContent(),'Download');assert.equal(await page.locator('#sqm_en').isChecked(),false);assert.ok((await page.locator('#sqmout').textContent()).includes('Not applied'));
- state.extraSqm=null;assert.equal(await page.locator('#sqm_daily').isVisible(),false);const n=writes.length;await page.evaluate(()=>saveSqmRule());assert.equal(writes.length,n);await page.locator('#sqm_unit').selectOption('KB/s');
+ state.extraSqm=null;assert.equal(await page.locator('#sqm_daily').isVisible(),true);assert.match(await page.locator('#sqm_rule_scope').textContent(),/All WAN traffic/);const n=writes.length;await page.evaluate(()=>saveSqmRule());assert.equal(writes.length,n);assert.equal(await page.getByRole('button',{name:'Save daily rule',exact:true}).isEnabled(),false);await setSqmUnit('KB/s');
  });
  await check('SQM failed extra-interface save retains selected queue and draft',async()=>{
  await load('sqm');await chooseSqm('eth2');await page.locator('#sqm_down').fill('333');
@@ -472,7 +595,7 @@ if(!process.argv.includes('--layout-only')){stress=false;fail='';delay=0;
  await chooseSqm('br-lan');await chooseSqm('eth2');assert.equal(await page.locator('#sqm_down').inputValue(),'333');
  });
  await check('SQM unit changes preserve canonical rates and survive reload',async()=>{
- await load('sqm');await page.locator('#sqm_unit').selectOption('Mb/s');assert.equal(await page.locator('#sqm_down').inputValue(),'100');await page.getByRole('button',{name:'Apply baseline',exact:true}).click();assert.equal(writes.filter(w=>w.path==='/api/sqm').at(-1).body.download,'12500');await page.reload();await page.waitForFunction(()=>document.getElementById('sqm_down').value==='100');assert.equal(await page.locator('#sqm_unit').inputValue(),'Mb/s');
+ await load('sqm');await setSqmUnit('Mb/s');assert.equal(await page.locator('#sqm_down').inputValue(),'100');await page.getByRole('button',{name:'Apply baseline',exact:true}).click();assert.equal(writes.filter(w=>w.path==='/api/sqm').at(-1).body.download,'12500');await page.reload();await page.waitForFunction(()=>document.getElementById('sqm_down').value==='100');assert.equal(await page.locator('#sqm_unit').inputValue(),'Mb/s');
  });
  await check('profile copies do not submit; save sends complete profile',async()=>{
  await load('limits');await page.locator('#lim_profile_select').selectOption('Guest');const n=writes.length;await page.getByRole('button',{name:'Copy to default'}).click();assert.equal(writes.length,n);assert.equal(await page.locator('#ld_up').inputValue(),'64');await page.getByRole('button',{name:'Save default policy'}).click();await page.waitForFunction(()=>document.getElementById('lim_default_out').textContent.startsWith('Saved'));assert.equal(writes.filter(w=>w.path==='/api/limits').at(-1).body.limits.up,'64');

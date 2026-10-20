@@ -60,7 +60,8 @@ class DailyInterfaceTests(unittest.TestCase):
         self.assertFalse(rules['eth2']['enabled'])
         self.assertFalse(rules['eth2']['forced_today'])
         self.assertEqual(rules['eth2']['today_bytes'], 99)
-        self.assertNotIn('eth0', rules)
+        self.assertFalse(rules['eth0']['enabled'])
+        self.assertEqual(rules['eth0']['usage_scope'], 'all_wan')
         self.assertEqual(app._load_json(app.SQM_CONDITIONAL_FILE, {}), original)
         self.assertEqual(self.commands, [])
         app._reconcile_sqm_conditional(force=True)
@@ -77,7 +78,8 @@ class DailyInterfaceTests(unittest.TestCase):
 
     def test_one_error_does_not_block_other_interface(self):
         self.policy('br-lan'); self.policy('eth2')
-        self.queues[0]['enabled'] = '0'
+        change = app._daily_sqm_set_rates.side_effect
+        app._daily_sqm_set_rates.side_effect = lambda iface, rates: ((False, 'apply failed') if iface == 'br-lan' else change(iface, rates))
         self.usage(**{'br-lan': GB, 'eth2': GB})
         ok, message = app._reconcile_sqm_conditional(force=True)
         self.assertFalse(ok)
@@ -152,7 +154,7 @@ class DailyInterfaceTests(unittest.TestCase):
         self.assertEqual(self.queues[0]['upload'], '16000')
         self.assertEqual(app._load_sqm_conditional('br-lan')['baseline'],
                          {'download': 160000, 'upload': 240000})
-        data = self.client.get('/api/sqm', headers=self.headers).get_json()
+        data = self.client.get('/api/sqm?refresh=1', headers=self.headers).get_json()
         self.assertEqual(data['baseline_config']['download'], '20000')
         self.assertEqual(data['baseline_config']['upload'], '30000')
         self.assertEqual(data['config']['download'], '1000')
@@ -161,7 +163,7 @@ class DailyInterfaceTests(unittest.TestCase):
             self.assertTrue(app._reconcile_sqm_conditional(force=True)[0])
         self.assertEqual(self.queues[0]['download'], '160000')
         self.assertEqual(self.queues[0]['upload'], '240000')
-        data = self.client.get('/api/sqm', headers=self.headers).get_json()
+        data = self.client.get('/api/sqm?refresh=1', headers=self.headers).get_json()
         self.assertEqual(data['baseline_config'], data['config'])
 
     def test_partial_failure_persists_original_baseline_and_disable_recovers_it(self):
@@ -193,7 +195,7 @@ class DailyInterfaceTests(unittest.TestCase):
     _real_set = staticmethod(app._daily_sqm_set_rates)
 
     def test_invalid_missing_disabled_or_duplicate_target_cannot_enable_rule(self):
-        for iface in ([], 'eth2;reboot', 'missing', 'eth0'):
+        for iface in ([], 'eth2;reboot', 'missing'):
             response = self.client.put('/api/sqm/conditional', headers=self.headers,
                                        json={'interface': iface, 'enabled': True})
             self.assertEqual(response.status_code, 400)

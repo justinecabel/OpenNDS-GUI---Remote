@@ -55,12 +55,14 @@ class OptimizationTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         for name in ('MODE_FILE', 'LIMITS_FILE', 'APPLIED_FILE', 'SESSION_REFRESH_FILE', 'BLOCK_FILE', 'PUNISH_FILE',
                      'PUNISH_TC_FILE', 'THROTTLE_FILE', 'WAN_USAGE_FILE', 'WAN_TRAFFIC_FILE', 'TRAFFIC_FILE',
-                     'SQM_CONDITIONAL_FILE', 'CLIENT_WAN_HISTORY_FILE', 'FAS_KEY_FILE', 'SEEN_FILE', 'CLIENT_NAMES_FILE', 'NETWORKS_FILE', 'WAN_QOS_FILE'):
+                     'SQM_CONDITIONAL_FILE', 'SQM_MODE_FILE', 'CLIENT_WAN_HISTORY_FILE', 'FAS_KEY_FILE', 'SEEN_FILE', 'DELETED_FILE', 'CLIENT_NAMES_FILE', 'SQM_NAMES_FILE', 'NETWORKS_FILE', 'WAN_QOS_FILE'):
             self.patch(name, str(Path(self.tmp.name) / (name + '.json')))
         for name, value in {'_wan_usage_data': None, '_wan_usage_live': {}, '_client_wan_history_data': None,
                             '_client_wan_live_history': {}, '_traffic_data': None, '_wan_traffic_data': None,
                             '_clients_cache_data': None, '_auth_attempts': {}, '_trusted_macs_cache': set(),
                             '_networks_data': None, '_networks_checked_at': 0.0,
+                            '_sqm_cache_data': None, '_sqm_observed_data': None, '_sqm_cache_error': '', '_sqm_cache_generation': 0,
+                            '_sqm_cache_published': -1, '_sqm_cache_attempted_at': 0.0,
                             '_qos_status_data': {'checked_at': 0, 'networks': [], 'queues': []}}.items():
             self.patch(name, value)
         self.commands = []
@@ -560,6 +562,7 @@ class OptimizationTests(unittest.TestCase):
         refresh.assert_called_once()
 
     def test_daily_rule_restores_baseline_after_forced_day_ends(self):
+        self.patch('_read_sqm_queues', Mock(return_value=([{'interface': 'br-lan', 'enabled': '1'}], '')))
         policy = {'enabled': True, 'threshold_gb': '20', 'download': 20000, 'upload': 20000,
                   'active': True, 'baseline': {'download': 30000, 'upload': 100000},
                   'forced_date': '2026-10-06', 'error': ''}
@@ -573,6 +576,7 @@ class OptimizationTests(unittest.TestCase):
         self.assertFalse(saved.call_args[0][0]['active'])
 
     def test_daily_rule_retries_prior_partial_failure_even_when_uci_matches(self):
+        self.patch('_read_sqm_queues', Mock(return_value=([{'interface': 'br-lan', 'enabled': '1'}], '')))
         policy = {'enabled': True, 'threshold_gb': '20', 'download': 20000, 'upload': 20000,
                   'active': True, 'baseline': {'download': 30000, 'upload': 100000},
                   'forced_date': '2026-10-07', 'error': 'previous incomplete update'}
@@ -787,7 +791,8 @@ class OptimizationTests(unittest.TestCase):
         daily.assert_called_once()
 
     def test_overview_snapshot_does_not_change_after_publication(self):
-        data = app._wan_traffic_state()
+        app._wan_usage_data = app._load_wan_usage()
+        data = app._client_traffic_state(app._wan_usage_data)
         day = app._traffic_time(int(time.time())).strftime('%Y-%m-%d')
         data['days'][day] = {'download': 1, 'upload': 2}
         response = app._traffic_overview()
